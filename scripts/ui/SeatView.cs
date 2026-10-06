@@ -165,15 +165,11 @@ public partial class SeatView : Control
         }
     }
 
-    /// <summary>Highlight hole cards in <paramref name="winning"/> and dim the rest; null clears.</summary>
-    public void HighlightCards(ISet<Card>? winning)
+    /// <summary>Sets each hole card's highlight from <paramref name="highlightFor"/>.</summary>
+    public void HighlightCards(System.Func<Card?, CardHighlight> highlightFor)
     {
         foreach (var view in _cards)
-        {
-            view.SetHighlight(winning == null || view.Card == null ? CardHighlight.None
-                : winning.Contains(view.Card) ? CardHighlight.Winning
-                : CardHighlight.Dimmed);
-        }
+            view.SetHighlight(highlightFor(view.Card));
     }
 
     public override void _Process(double delta)

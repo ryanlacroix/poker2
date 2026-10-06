@@ -2,7 +2,7 @@ using Godot;
 
 namespace PokerGame;
 
-public enum CardHighlight { None, Winning, Dimmed }
+public enum CardHighlight { None, Winning, Kicker, Dimmed }
 
 /// <summary>Draws one card (face up, face down, or an empty slot) in pixel-art style.</summary>
 public partial class CardView : Control
@@ -32,7 +32,10 @@ public partial class CardView : Control
         QueueRedraw();
     }
 
-    /// <summary>Winning cards lift and get a gold outline; dimmed cards are shaded.</summary>
+    /// <summary>
+    /// Winning cards lift and get a bright double gold outline; kickers stay put with a faint
+    /// single outline; dimmed cards are shaded.
+    /// </summary>
     public void SetHighlight(CardHighlight highlight)
     {
         _highlight = highlight;
@@ -67,6 +70,10 @@ public partial class CardView : Control
         {
             DrawRect(rect.Grow(1), PixelArt.Gold, false, 1);
             DrawRect(rect.Grow(2), new Color(PixelArt.Gold, 0.4f), false, 1);
+        }
+        else if (_highlight == CardHighlight.Kicker)
+        {
+            DrawRect(rect.Grow(1), new Color(PixelArt.Gold, 0.45f), false, 1);
         }
         else if (_highlight == CardHighlight.Dimmed)
         {

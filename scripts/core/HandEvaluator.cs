@@ -125,6 +125,26 @@ public static class HandEvaluator
         return cards.Take(5).ToList();
     }
 
+    /// <summary>
+    /// The cards in <paramref name="five"/> that make its hand, leaving out kickers: the matched
+    /// ranks for pairs, trips and quads, the top card for a high card, and all five otherwise.
+    /// </summary>
+    public static List<Card> ScoringCards(IReadOnlyList<Card> five)
+    {
+        switch ((HandCategory)Evaluate(five)[0])
+        {
+            case HandCategory.Pair:
+            case HandCategory.TwoPair:
+            case HandCategory.ThreeOfAKind:
+            case HandCategory.FourOfAKind:
+                return five.Where(c => five.Count(o => o.Rank == c.Rank) >= 2).ToList();
+            case HandCategory.HighCard:
+                return [five.MaxBy(c => c.Rank)!];
+            default:
+                return five.ToList();
+        }
+    }
+
     /// <summary>Highest card of a 5-card run, or 0. Handles the A-2-3-4-5 wheel.</summary>
     private static int StraightHigh(List<int> ranks)
     {

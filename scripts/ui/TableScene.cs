@@ -38,7 +38,8 @@ public partial class TableScene : Control
     private readonly List<ChipPileView> _betPiles = new();
     private readonly List<CardView> _community = new();
     private readonly HashSet<PokerPlayer> _winners = new();
-    private readonly HashSet<Card> _winningCards = new();
+    private readonly HashSet<Card> _winningCards = new(); // winners' best five, kickers included
+    private readonly HashSet<Card> _scoringCards = new(); // just the cards that made each winning hand
     private PotView _pot = null!;
     private int _shownPot;
     private Tween? _potTween;
@@ -274,6 +275,7 @@ public partial class TableScene : Control
             foreach (var view in _community) view.SetCard(null, false);
             _winners.Clear();
             _winningCards.Clear();
+            _scoringCards.Clear();
             ApplyWinHighlights();
         };
         _table.StreetStarted += street =>
@@ -321,7 +323,11 @@ public partial class TableScene : Control
             _winners.Add(player);
             // Uncontested pots have no shown hand; only showdown winners light up cards.
             if (handName != "")
-                _winningCards.UnionWith(HandEvaluator.BestFive(player.HoleCards.Concat(_table.Community).ToList()));
+            {
+                var five = HandEvaluator.BestFive(player.HoleCards.Concat(_table.Community).ToList());
+                _winningCards.UnionWith(five);
+                _scoringCards.UnionWith(HandEvaluator.ScoringCards(five));
+            }
             ApplyWinHighlights();
         };
         _table.WaitingForNextHand += () =>
@@ -383,22 +389,26 @@ public partial class TableScene : Control
         _ => HandEvaluator.Describe(score).ToUpper(),
     };
 
-    /// <summary>Gold glow on winners' portraits; lift the winning five cards and dim the rest.</summary>
+    /// <summary>
+    /// Gold glow on winners' portraits; lift the cards that made the winning hand, faintly outline
+    /// its kickers, and dim the rest.
+    /// </summary>
     private void ApplyWinHighlights()
     {
-        ISet<Card>? cards = _winningCards.Count > 0 ? _winningCards : null;
         foreach (var seat in _seats)
         {
             seat.SetWinner(_winners.Contains(seat.Player));
-            seat.HighlightCards(cards);
+            seat.HighlightCards(WinHighlightFor);
         }
         foreach (var view in _community)
-        {
-            view.SetHighlight(cards == null || view.Card == null ? CardHighlight.None
-                : cards.Contains(view.Card) ? CardHighlight.Winning
-                : CardHighlight.Dimmed);
-        }
+            view.SetHighlight(WinHighlightFor(view.Card));
     }
+
+    private CardHighlight WinHighlightFor(Card? card) =>
+        _winningCards.Count == 0 || card == null ? CardHighlight.None
+        : _scoringCards.Contains(card) ? CardHighlight.Winning
+        : _winningCards.Contains(card) ? CardHighlight.Kicker
+        : CardHighlight.Dimmed;
 
     private void RefreshSeats()
     {
