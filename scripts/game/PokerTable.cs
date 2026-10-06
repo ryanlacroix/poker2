@@ -13,318 +13,345 @@ namespace PokerGame;
 /// </summary>
 public partial class PokerTable : Node
 {
-    public event Action<int, int>? HandStarted;                 // hand number, dealer seat
-    public event Action<Street>? StreetStarted;
-    public event Action? HoleCardsDealt;
-    public event Action<IReadOnlyList<Card>>? CommunityChanged;
-    public event Action<PokerPlayer, int, int, int>? TurnStarted; // player, to call, min raise-to, max raise-to
-    public event Action<PokerPlayer, PokerAction, int>? PlayerActed;
-    public event Action? ChipsChanged;
-    public event Action<IReadOnlyList<PokerPlayer>, IReadOnlyDictionary<PokerPlayer, int[]>>? Showdown;
-    public event Action<PokerPlayer, int, string>? PotAwarded;  // winner, amount, hand name ("" if uncontested)
-    public event Action? HandFinished;
-    public event Action<PokerPlayer>? GameOver;
-    public event Action<string>? Message;
+	public event Action<int, int>? HandStarted;                 // hand number, dealer seat
+	public event Action<Street>? StreetStarted;
+	public event Action? HoleCardsDealt;
+	public event Action<IReadOnlyList<Card>>? CommunityChanged;
+	public event Action<PokerPlayer, int, int, int>? TurnStarted; // player, to call, min raise-to, max raise-to
+	public event Action<PokerPlayer, PokerAction, int>? PlayerActed;
+	public event Action? ChipsChanged;
+	public event Action<IReadOnlyList<PokerPlayer>, IReadOnlyDictionary<PokerPlayer, int[]>>? Showdown;
+	public event Action<PokerPlayer, int, string>? PotAwarded;  // winner, amount, hand name ("" if uncontested)
+	public event Action? HandFinished;
+	/// <summary>Raised between hands when <see cref="WaitForNextHand"/> is on; call <see cref="ContinueToNextHand"/>.</summary>
+	public event Action? WaitingForNextHand;
+	public event Action<PokerPlayer>? GameOver;
+	public event Action<string>? Message;
 
-    public int SmallBlind { get; set; } = 10;
-    public int BigBlind { get; set; } = 20;
-    public double DealDelay { get; set; } = 0.4;
-    public double NpcThinkTime { get; set; } = 0.8;
-    public double ShowdownDelay { get; set; } = 2.0;
-    public double BetweenHandsDelay { get; set; } = 1.5;
-    /// <summary>0 = unlimited.</summary>
-    public int MaxHands { get; set; }
+	public int SmallBlind { get; set; } = 10;
+	public int BigBlind { get; set; } = 20;
+	public double DealDelay { get; set; } = 0.4;
+	public double NpcThinkTime { get; set; } = 0.8;
+	public double ShowdownDelay { get; set; } = 2.0;
+	public double BetweenHandsDelay { get; set; } = 1.5;
+	/// <summary>0 = unlimited.</summary>
+	public int MaxHands { get; set; }
+	/// <summary>
+	/// Pause after each hand until <see cref="ContinueToNextHand"/> is called, instead of
+	/// waiting ShowdownDelay + BetweenHandsDelay.
+	/// </summary>
+	public bool WaitForNextHand { get; set; }
 
-    public List<PokerPlayer> Players { get; } = new();
-    public List<Card> Community { get; } = new();
-    public Street Street { get; private set; }
-    public int DealerIndex { get; private set; } = -1;
-    public int HandNumber { get; private set; }
-    /// <summary>Highest StreetBet this betting round.</summary>
-    public int CurrentBet { get; private set; }
+	public List<PokerPlayer> Players { get; } = new();
+	public List<Card> Community { get; } = new();
+	public Street Street { get; private set; }
+	public int DealerIndex { get; private set; } = -1;
+	public int HandNumber { get; private set; }
+	/// <summary>Highest StreetBet this betting round.</summary>
+	public int CurrentBet { get; private set; }
 
-    private int _minRaise;
-    private readonly Deck _deck = new();
-    private TaskCompletionSource<Decision>? _humanDecision;
-    private readonly CancellationTokenSource _cts = new();
+	private int _minRaise;
+	private readonly Deck _deck = new();
+	private TaskCompletionSource<Decision>? _humanDecision;
+	private TaskCompletionSource? _nextHand;
+	private readonly CancellationTokenSource _cts = new();
 
-    public int Pot => Players.Sum(p => p.TotalBet);
+	public int Pot => Players.Sum(p => p.TotalBet);
 
-    public void Setup(IEnumerable<PokerPlayer> players)
-    {
-        Players.Clear();
-        Players.AddRange(players);
-        for (int i = 0; i < Players.Count; i++)
-            Players[i].Seat = i;
-    }
+	public void Setup(IEnumerable<PokerPlayer> players)
+	{
+		Players.Clear();
+		Players.AddRange(players);
+		for (int i = 0; i < Players.Count; i++)
+			Players[i].Seat = i;
+	}
 
-    /// <summary>Called by the UI when the human picks an action.</summary>
-    public void SubmitHumanAction(Decision decision) => _humanDecision?.TrySetResult(decision);
+	/// <summary>Called by the UI when the human picks an action.</summary>
+	public void SubmitHumanAction(Decision decision) => _humanDecision?.TrySetResult(decision);
 
-    public override void _ExitTree()
-    {
-        // Stops the game loop cleanly if the scene is left mid-hand.
-        _cts.Cancel();
-        _humanDecision?.TrySetCanceled();
-    }
+	/// <summary>Called by the UI to deal the next hand while paused (see <see cref="WaitForNextHand"/>).</summary>
+	public void ContinueToNextHand() => _nextHand?.TrySetResult();
 
-    public async void StartGame()
-    {
-        try
-        {
-            while (Players.Count(p => p.Chips > 0) > 1
-                   && !Players.Any(p => p.IsHuman && p.Chips <= 0)
-                   && (MaxHands == 0 || HandNumber < MaxHands))
-            {
-                await PlayHand();
-                await Wait(BetweenHandsDelay);
-            }
-            GameOver?.Invoke(Players.MaxBy(p => p.Chips)!);
-        }
-        catch (OperationCanceledException)
-        {
-        }
-    }
+	public override void _ExitTree()
+	{
+		// Stops the game loop cleanly if the scene is left mid-hand.
+		_cts.Cancel();
+		_humanDecision?.TrySetCanceled();
+		_nextHand?.TrySetCanceled();
+	}
 
-    // --- Hand flow ---------------------------------------------------------
+	private bool GameContinues =>
+		Players.Count(p => p.Chips > 0) > 1
+		&& !Players.Any(p => p.IsHuman && p.Chips <= 0)
+		&& (MaxHands == 0 || HandNumber < MaxHands);
 
-    private async Task PlayHand()
-    {
-        HandNumber++;
-        foreach (var p in Players) p.ResetForHand();
-        Community.Clear();
-        _deck.Reset();
+	public async void StartGame()
+	{
+		try
+		{
+			while (GameContinues)
+			{
+				await PlayHand();
+				if (!GameContinues) break;
+				if (WaitForNextHand)
+				{
+					_nextHand = new TaskCompletionSource();
+					WaitingForNextHand?.Invoke();
+					await _nextHand.Task;
+					_nextHand = null;
+				}
+				else
+				{
+					await Wait(BetweenHandsDelay);
+				}
+			}
+			GameOver?.Invoke(Players.MaxBy(p => p.Chips)!);
+		}
+		catch (OperationCanceledException)
+		{
+		}
+	}
 
-        static bool Seated(PokerPlayer p) => !p.IsOut;
-        DealerIndex = NextSeat(DealerIndex, Seated);
-        // Heads-up: the dealer posts the small blind.
-        int sbIndex = Players.Count(Seated) == 2 ? DealerIndex : NextSeat(DealerIndex, Seated);
-        int bbIndex = NextSeat(sbIndex, Seated);
+	// --- Hand flow ---------------------------------------------------------
 
-        HandStarted?.Invoke(HandNumber, DealerIndex);
-        StartStreet(Street.Preflop);
-        PostBlind(Players[sbIndex], SmallBlind, "small");
-        PostBlind(Players[bbIndex], BigBlind, "big");
-        CurrentBet = BigBlind;
+	private async Task PlayHand()
+	{
+		HandNumber++;
+		foreach (var p in Players) p.ResetForHand();
+		Community.Clear();
+		_deck.Reset();
 
-        for (int round = 0; round < 2; round++)
-        {
-            for (int step = 1; step <= Players.Count; step++)
-            {
-                var p = Players[(DealerIndex + step) % Players.Count];
-                if (!p.IsOut) p.HoleCards.Add(_deck.Draw());
-            }
-        }
-        HoleCardsDealt?.Invoke();
-        ChipsChanged?.Invoke();
-        await Wait(DealDelay);
+		static bool Seated(PokerPlayer p) => !p.IsOut;
+		DealerIndex = NextSeat(DealerIndex, Seated);
+		// Heads-up: the dealer posts the small blind.
+		int sbIndex = Players.Count(Seated) == 2 ? DealerIndex : NextSeat(DealerIndex, Seated);
+		int bbIndex = NextSeat(sbIndex, Seated);
 
-        await BettingRound(NextSeat(bbIndex, p => p.CanAct));
+		HandStarted?.Invoke(HandNumber, DealerIndex);
+		StartStreet(Street.Preflop);
+		PostBlind(Players[sbIndex], SmallBlind, "small");
+		PostBlind(Players[bbIndex], BigBlind, "big");
+		CurrentBet = BigBlind;
 
-        foreach (var next in new[] { Street.Flop, Street.Turn, Street.River })
-        {
-            if (Players.Count(p => p.InHand) <= 1) break;
-            StartStreet(next);
-            int n = next == Street.Flop ? 3 : 1;
-            for (int i = 0; i < n; i++) Community.Add(_deck.Draw());
-            CommunityChanged?.Invoke(Community);
-            await Wait(DealDelay);
-            if (Players.Count(p => p.CanAct) >= 2)
-                await BettingRound(NextSeat(DealerIndex, p => p.CanAct));
-        }
+		for (int round = 0; round < 2; round++)
+		{
+			for (int step = 1; step <= Players.Count; step++)
+			{
+				var p = Players[(DealerIndex + step) % Players.Count];
+				if (!p.IsOut) p.HoleCards.Add(_deck.Draw());
+			}
+		}
+		HoleCardsDealt?.Invoke();
+		ChipsChanged?.Invoke();
+		await Wait(DealDelay);
 
-        await ResolveHand();
-        HandFinished?.Invoke();
-    }
+		await BettingRound(NextSeat(bbIndex, p => p.CanAct));
 
-    private void StartStreet(Street s)
-    {
-        Street = s;
-        CurrentBet = 0;
-        _minRaise = BigBlind;
-        foreach (var p in Players)
-        {
-            p.StreetBet = 0;
-            p.HasActed = false;
-        }
-        StreetStarted?.Invoke(s);
-    }
+		foreach (var next in new[] { Street.Flop, Street.Turn, Street.River })
+		{
+			if (Players.Count(p => p.InHand) <= 1) break;
+			StartStreet(next);
+			int n = next == Street.Flop ? 3 : 1;
+			for (int i = 0; i < n; i++) Community.Add(_deck.Draw());
+			CommunityChanged?.Invoke(Community);
+			await Wait(DealDelay);
+			if (Players.Count(p => p.CanAct) >= 2)
+				await BettingRound(NextSeat(DealerIndex, p => p.CanAct));
+		}
 
-    private void PostBlind(PokerPlayer p, int amount, string kind)
-    {
-        int paid = p.Commit(amount);
-        Message?.Invoke($"{p.DisplayName} posts {kind} blind {paid}");
-    }
+		await ResolveHand();
+		HandFinished?.Invoke();
+	}
 
-    private bool NeedsToAct(PokerPlayer p) => p.CanAct && (!p.HasActed || p.StreetBet < CurrentBet);
+	private void StartStreet(Street s)
+	{
+		Street = s;
+		CurrentBet = 0;
+		_minRaise = BigBlind;
+		foreach (var p in Players)
+		{
+			p.StreetBet = 0;
+			p.HasActed = false;
+		}
+		StreetStarted?.Invoke(s);
+	}
 
-    private async Task BettingRound(int start)
-    {
-        if (start < 0) return;
-        int idx = start;
-        while (true)
-        {
-            if (Players.Count(p => p.InHand) <= 1) return;
-            if (!Players.Any(NeedsToAct)) return;
-            var actors = Players.Where(p => p.CanAct).ToList();
-            if (actors.Count == 1 && actors[0].StreetBet >= CurrentBet) return;
+	private void PostBlind(PokerPlayer p, int amount, string kind)
+	{
+		int paid = p.Commit(amount);
+		Message?.Invoke($"{p.DisplayName} posts {kind} blind {paid}");
+	}
 
-            var player = Players[idx];
-            if (NeedsToAct(player))
-            {
-                int toCall = CurrentBet - player.StreetBet;
-                int maxTo = player.StreetBet + player.Chips;
-                int minTo = Math.Min(CurrentBet + _minRaise, maxTo);
-                TurnStarted?.Invoke(player, toCall, minTo, maxTo);
+	private bool NeedsToAct(PokerPlayer p) => p.CanAct && (!p.HasActed || p.StreetBet < CurrentBet);
 
-                Decision decision;
-                if (player.IsHuman)
-                {
-                    _humanDecision = new TaskCompletionSource<Decision>();
-                    decision = await _humanDecision.Task;
-                    _humanDecision = null;
-                }
-                else
-                {
-                    await Wait(NpcThinkTime);
-                    decision = player.Brain!.Decide(new DecisionContext(
-                        player.HoleCards, Community, Street, toCall, Pot, CurrentBet,
-                        minTo, maxTo, player.Chips, BigBlind, Players.Count(p => p.InHand) - 1));
-                }
-                ApplyAction(player, decision);
-            }
-            idx = (idx + 1) % Players.Count;
-        }
-    }
+	private async Task BettingRound(int start)
+	{
+		if (start < 0) return;
+		int idx = start;
+		while (true)
+		{
+			if (Players.Count(p => p.InHand) <= 1) return;
+			if (!Players.Any(NeedsToAct)) return;
+			var actors = Players.Where(p => p.CanAct).ToList();
+			if (actors.Count == 1 && actors[0].StreetBet >= CurrentBet) return;
 
-    /// <summary>Validates and applies a decision. Illegal choices are coerced to the nearest legal one.</summary>
-    private void ApplyAction(PokerPlayer p, Decision decision)
-    {
-        int toCall = CurrentBet - p.StreetBet;
-        var action = decision.Action;
-        int amount = decision.Amount;
+			var player = Players[idx];
+			if (NeedsToAct(player))
+			{
+				int toCall = CurrentBet - player.StreetBet;
+				int maxTo = player.StreetBet + player.Chips;
+				int minTo = Math.Min(CurrentBet + _minRaise, maxTo);
+				TurnStarted?.Invoke(player, toCall, minTo, maxTo);
 
-        if (action == PokerAction.Raise)
-        {
-            amount = Math.Min(Math.Max(amount, CurrentBet + _minRaise), p.StreetBet + p.Chips);
-            if (amount <= CurrentBet) action = PokerAction.Call;
-        }
-        if (action == PokerAction.Check && toCall > 0) action = PokerAction.Call;
-        if (action == PokerAction.Call && toCall == 0) action = PokerAction.Check;
+				Decision decision;
+				if (player.IsHuman)
+				{
+					_humanDecision = new TaskCompletionSource<Decision>();
+					decision = await _humanDecision.Task;
+					_humanDecision = null;
+				}
+				else
+				{
+					await Wait(NpcThinkTime);
+					decision = player.Brain!.Decide(new DecisionContext(
+						player.HoleCards, Community, Street, toCall, Pot, CurrentBet,
+						minTo, maxTo, player.Chips, BigBlind, Players.Count(p => p.InHand) - 1));
+				}
+				ApplyAction(player, decision);
+			}
+			idx = (idx + 1) % Players.Count;
+		}
+	}
 
-        switch (action)
-        {
-            case PokerAction.Fold:
-                p.Folded = true;
-                amount = 0;
-                break;
-            case PokerAction.Check:
-                amount = 0;
-                break;
-            case PokerAction.Call:
-                amount = p.Commit(toCall);
-                break;
-            case PokerAction.Raise:
-                int raiseSize = amount - CurrentBet;
-                p.Commit(amount - p.StreetBet);
-                if (raiseSize >= _minRaise)
-                {
-                    _minRaise = raiseSize;
-                    // A full raise re-opens the action for everyone else.
-                    foreach (var other in Players)
-                        if (other != p) other.HasActed = false;
-                }
-                CurrentBet = amount;
-                break;
-        }
-        p.HasActed = true;
-        PlayerActed?.Invoke(p, action, amount);
-        ChipsChanged?.Invoke();
-    }
+	/// <summary>Validates and applies a decision. Illegal choices are coerced to the nearest legal one.</summary>
+	private void ApplyAction(PokerPlayer p, Decision decision)
+	{
+		int toCall = CurrentBet - p.StreetBet;
+		var action = decision.Action;
+		int amount = decision.Amount;
 
-    private async Task ResolveHand()
-    {
-        var contenders = Players.Where(p => p.InHand).ToList();
-        if (contenders.Count == 1)
-        {
-            int amount = Pot;
-            contenders[0].Chips += amount;
-            PotAwarded?.Invoke(contenders[0], amount, "");
-            ClearBets();
-            return;
-        }
+		if (action == PokerAction.Raise)
+		{
+			amount = Math.Min(Math.Max(amount, CurrentBet + _minRaise), p.StreetBet + p.Chips);
+			if (amount <= CurrentBet) action = PokerAction.Call;
+		}
+		if (action == PokerAction.Check && toCall > 0) action = PokerAction.Call;
+		if (action == PokerAction.Call && toCall == 0) action = PokerAction.Check;
 
-        Street = Street.Showdown;
-        var scores = contenders.ToDictionary(p => p, p => HandEvaluator.Evaluate(p.HoleCards.Concat(Community)));
-        Showdown?.Invoke(contenders, scores);
+		switch (action)
+		{
+			case PokerAction.Fold:
+				p.Folded = true;
+				amount = 0;
+				break;
+			case PokerAction.Check:
+				amount = 0;
+				break;
+			case PokerAction.Call:
+				amount = p.Commit(toCall);
+				break;
+			case PokerAction.Raise:
+				int raiseSize = amount - CurrentBet;
+				p.Commit(amount - p.StreetBet);
+				if (raiseSize >= _minRaise)
+				{
+					_minRaise = raiseSize;
+					// A full raise re-opens the action for everyone else.
+					foreach (var other in Players)
+						if (other != p) other.HasActed = false;
+				}
+				CurrentBet = amount;
+				break;
+		}
+		p.HasActed = true;
+		PlayerActed?.Invoke(p, action, amount);
+		ChipsChanged?.Invoke();
+	}
 
-        // Main pot + one side pot per distinct all-in level.
-        var levels = contenders.Select(p => p.TotalBet).Distinct().OrderBy(x => x).ToList();
-        int prev = 0;
-        for (int i = 0; i < levels.Count; i++)
-        {
-            int level = levels[i];
-            bool isLast = i == levels.Count - 1;
-            int amount = 0;
-            foreach (var p in Players)
-            {
-                int over = p.TotalBet - prev;
-                // The last pot also sweeps up chips folded players put in above every all-in level.
-                if (over > 0) amount += isLast ? over : Math.Min(over, level - prev);
-            }
-            prev = level;
-            if (amount == 0) continue;
+	private async Task ResolveHand()
+	{
+		var contenders = Players.Where(p => p.InHand).ToList();
+		if (contenders.Count == 1)
+		{
+			int amount = Pot;
+			contenders[0].Chips += amount;
+			PotAwarded?.Invoke(contenders[0], amount, "");
+			ClearBets();
+			return;
+		}
 
-            var winners = new List<PokerPlayer>();
-            foreach (var p in contenders.Where(p => p.TotalBet >= level))
-            {
-                int cmp = winners.Count == 0 ? 1 : HandEvaluator.Compare(scores[p], scores[winners[0]]);
-                if (cmp > 0) winners = new List<PokerPlayer> { p };
-                else if (cmp == 0) winners.Add(p);
-            }
-            int share = amount / winners.Count;
-            int remainder = amount % winners.Count;
-            foreach (var w in winners)
-            {
-                int won = share + remainder;
-                remainder = 0;
-                w.Chips += won;
-                PotAwarded?.Invoke(w, won, HandEvaluator.Describe(scores[w]));
-            }
-        }
+		Street = Street.Showdown;
+		var scores = contenders.ToDictionary(p => p, p => HandEvaluator.Evaluate(p.HoleCards.Concat(Community)));
+		Showdown?.Invoke(contenders, scores);
 
-        ClearBets();
-        await Wait(ShowdownDelay);
-    }
+		// Main pot + one side pot per distinct all-in level.
+		var levels = contenders.Select(p => p.TotalBet).Distinct().OrderBy(x => x).ToList();
+		int prev = 0;
+		for (int i = 0; i < levels.Count; i++)
+		{
+			int level = levels[i];
+			bool isLast = i == levels.Count - 1;
+			int amount = 0;
+			foreach (var p in Players)
+			{
+				int over = p.TotalBet - prev;
+				// The last pot also sweeps up chips folded players put in above every all-in level.
+				if (over > 0) amount += isLast ? over : Math.Min(over, level - prev);
+			}
+			prev = level;
+			if (amount == 0) continue;
 
-    private void ClearBets()
-    {
-        foreach (var p in Players)
-        {
-            p.TotalBet = 0;
-            p.StreetBet = 0;
-        }
-        ChipsChanged?.Invoke();
-    }
+			var winners = new List<PokerPlayer>();
+			foreach (var p in contenders.Where(p => p.TotalBet >= level))
+			{
+				int cmp = winners.Count == 0 ? 1 : HandEvaluator.Compare(scores[p], scores[winners[0]]);
+				if (cmp > 0) winners = new List<PokerPlayer> { p };
+				else if (cmp == 0) winners.Add(p);
+			}
+			int share = amount / winners.Count;
+			int remainder = amount % winners.Count;
+			foreach (var w in winners)
+			{
+				int won = share + remainder;
+				remainder = 0;
+				w.Chips += won;
+				PotAwarded?.Invoke(w, won, HandEvaluator.Describe(scores[w]));
+			}
+		}
 
-    // --- Helpers -----------------------------------------------------------
+		ClearBets();
+		if (!WaitForNextHand)
+			await Wait(ShowdownDelay);
+	}
 
-    /// <summary>First seat after <paramref name="from"/> (wrapping, <paramref name="from"/> itself last) matching pred, or -1.</summary>
-    private int NextSeat(int from, Func<PokerPlayer, bool> pred)
-    {
-        int n = Players.Count;
-        for (int step = 1; step <= n; step++)
-        {
-            int i = ((from + step) % n + n) % n;
-            if (pred(Players[i])) return i;
-        }
-        return -1;
-    }
+	private void ClearBets()
+	{
+		foreach (var p in Players)
+		{
+			p.TotalBet = 0;
+			p.StreetBet = 0;
+		}
+		ChipsChanged?.Invoke();
+	}
 
-    private async Task Wait(double seconds)
-    {
-        _cts.Token.ThrowIfCancellationRequested();
-        await ToSignal(GetTree().CreateTimer(seconds), SceneTreeTimer.SignalName.Timeout);
-        _cts.Token.ThrowIfCancellationRequested();
-    }
+	// --- Helpers -----------------------------------------------------------
+
+	/// <summary>First seat after <paramref name="from"/> (wrapping, <paramref name="from"/> itself last) matching pred, or -1.</summary>
+	private int NextSeat(int from, Func<PokerPlayer, bool> pred)
+	{
+		int n = Players.Count;
+		for (int step = 1; step <= n; step++)
+		{
+			int i = ((from + step) % n + n) % n;
+			if (pred(Players[i])) return i;
+		}
+		return -1;
+	}
+
+	private async Task Wait(double seconds)
+	{
+		_cts.Token.ThrowIfCancellationRequested();
+		await ToSignal(GetTree().CreateTimer(seconds), SceneTreeTimer.SignalName.Timeout);
+		_cts.Token.ThrowIfCancellationRequested();
+	}
 }

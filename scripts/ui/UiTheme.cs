@@ -31,6 +31,19 @@ public static class UiTheme
         return theme;
     }
 
+    /// <summary>
+    /// Adds <paramref name="control"/> to <paramref name="parent"/>, then sets its rect.
+    /// Sizing must happen after AddChild: outside the tree a Control measures itself with
+    /// the engine's default 16px font, and the inflated size never shrinks back.
+    /// </summary>
+    public static T AddAt<T>(this Node parent, T control, Vector2 position, Vector2 size) where T : Control
+    {
+        parent.AddChild(control);
+        control.Position = position;
+        control.Size = size;
+        return control;
+    }
+
     private static StyleBoxFlat Box(Color bg, Color border, int margin = 3)
     {
         var box = new StyleBoxFlat { BgColor = bg, BorderColor = border, AntiAliasing = false };

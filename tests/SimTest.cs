@@ -31,6 +31,9 @@ public partial class SimTest : Node
         Expect("2c 5d 9h Jh Kh Ad 3s", HandCategory.HighCard, 14, 13, 11, 9, 5);
         Check(HandEvaluator.Compare(Score("Ah Kd 2c 3c 4d 8h 9s"), Score("Ac Kh 2d 3s 4h 8d 9c")) == 0, "split pot tie");
         Check(HandEvaluator.Compare(Score("Ah Ad Kc 7s 2d 3h 4s"), Score("Ah Ad Qc 7s 2d 3h 4s")) > 0, "pair kicker");
+        ExpectBestFive("Ah Kd 7c 7s 2d 3h Ac", "Ah Ac 7c 7s Kd");
+        ExpectBestFive("2h 3h 4h 5h 7h 6d 8c", "7h 5h 4h 3h 2h");
+        ExpectBestFive("Ah 2d 3c 4s 5h Kd Kc", "Ah 2d 3c 4s 5h");
     }
 
     private void RunSimulation()
@@ -41,6 +44,7 @@ public partial class SimTest : Node
         var table = new PokerTable
         {
             DealDelay = 0, NpcThinkTime = 0, ShowdownDelay = 0, BetweenHandsDelay = 0, MaxHands = 300,
+            WaitForNextHand = true,
         };
         AddChild(table);
         // One NPC per opponent slot plus one in the human's seat, so the game runs unattended.
@@ -53,8 +57,17 @@ public partial class SimTest : Node
             Check(total == expected, $"chips conserved after hand {table.HandNumber} ({total} != {expected})");
             Check(table.Players.All(p => p.Chips >= 0), "no negative stacks");
         };
+        // Stand in for the "next hand" button.
+        int pauses = 0;
+        table.WaitingForNextHand += () =>
+        {
+            pauses++;
+            table.ContinueToNextHand();
+        };
         table.GameOver += winner =>
         {
+            // Every hand but the game-ending one should pause for the button.
+            Check(pauses == table.HandNumber - 1, $"paused {pauses} times over {table.HandNumber} hands");
             GD.Print($"Simulated {table.HandNumber} hands, leader {winner.DisplayName} with {winner.Chips}");
             GD.Print(_failures == 0 ? "ALL TESTS PASSED" : $"{_failures} FAILURE(S)");
             GetTree().Quit(_failures);
@@ -67,6 +80,13 @@ public partial class SimTest : Node
         var score = Score(hand);
         int[] expected = [(int)category, .. tiebreaks];
         Check(score.SequenceEqual(expected), $"{hand}: got [{string.Join(",", score)}], want [{string.Join(",", expected)}]");
+    }
+
+    private void ExpectBestFive(string hand, string expected)
+    {
+        var best = HandEvaluator.BestFive(hand.Split(' ').Select(Parse).ToList()).Select(c => c.ToString()).OrderBy(x => x);
+        var want = expected.Split(' ').Select(s => Parse(s).ToString()).OrderBy(x => x);
+        Check(best.SequenceEqual(want), $"best five of {hand}: got {string.Join(" ", best)}, want {string.Join(" ", want)}");
     }
 
     private static int[] Score(string hand) => HandEvaluator.Evaluate(hand.Split(' ').Select(Parse));

@@ -106,6 +106,25 @@ public static class HandEvaluator
 
     public static string Describe(int[] score) => CategoryNames[score[0]];
 
+    /// <summary>The five cards (out of 5-7) that make up the best hand, kickers included.</summary>
+    public static List<Card> BestFive(IReadOnlyList<Card> cards)
+    {
+        var target = Evaluate(cards);
+        int n = cards.Count;
+        var five = new Card[5];
+        for (int a = 0; a < n; a++)
+        for (int b = a + 1; b < n; b++)
+        for (int c = b + 1; c < n; c++)
+        for (int d = c + 1; d < n; d++)
+        for (int e = d + 1; e < n; e++)
+        {
+            five[0] = cards[a]; five[1] = cards[b]; five[2] = cards[c]; five[3] = cards[d]; five[4] = cards[e];
+            if (Compare(Evaluate(five), target) == 0)
+                return five.ToList();
+        }
+        return cards.Take(5).ToList();
+    }
+
     /// <summary>Highest card of a 5-card run, or 0. Handles the A-2-3-4-5 wheel.</summary>
     private static int StraightHigh(List<int> ranks)
     {

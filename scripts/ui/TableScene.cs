@@ -14,12 +14,18 @@ public partial class TableScene : Control
     private static readonly Vector2 FeltCenter = new(320, 160);
     private static readonly Vector2 FeltRadii = new(250, 108);
     private static readonly Vector2 SeatRadii = new(262, 118);
+    private static readonly Vector2 StackPileOffset = new(-17, 0);
+    private static readonly Vector2 BetPileOffset = new(19, 0);
     private const int LogLines = 3;
 
     private PokerTable _table = null!;
     private readonly Texture2D _worldMap = GD.Load<Texture2D>(UiTheme.WorldMapPath);
     private readonly List<SeatView> _seats = new();
+    private readonly List<ChipPileView> _stackPiles = new();
+    private readonly List<ChipPileView> _betPiles = new();
     private readonly List<CardView> _community = new();
+    private readonly HashSet<PokerPlayer> _winners = new();
+    private readonly HashSet<Card> _winningCards = new();
     private readonly Queue<string> _log = new();
     private Label _potLabel = null!;
     private Label _logLabel = null!;
@@ -29,6 +35,7 @@ public partial class TableScene : Control
     private Button _raiseButton = null!;
     private HSlider _raiseSlider = null!;
     private Label _raiseLabel = null!;
+    private Button _nextHandButton = null!;
     private int _toCall;
 
     public override void _Ready()
@@ -42,6 +49,7 @@ public partial class TableScene : Control
             DealDelay = cfg.DealDelay,
             ShowdownDelay = cfg.ShowdownDelay,
             BetweenHandsDelay = cfg.BetweenHandsDelay,
+            WaitForNextHand = true,
         };
         AddChild(_table);
         _table.Setup(cfg.CreatePlayers());
@@ -84,6 +92,15 @@ public partial class TableScene : Control
             };
             AddChild(seat);
             _seats.Add(seat);
+
+            // Stack (whole bankroll) on the left, this hand's bet on the right.
+            var unit = PileUnitPosition(seat);
+            var stack = new ChipPileView { Position = unit + StackPileOffset, ShowLabel = false };
+            AddChild(stack);
+            _stackPiles.Add(stack);
+            var bet = new ChipPileView { Position = unit + BetPileOffset };
+            AddChild(bet);
+            _betPiles.Add(bet);
         }
 
         float rowWidth = 5 * CardView.CardSize.X + 4 * 4;
@@ -98,38 +115,65 @@ public partial class TableScene : Control
             _community.Add(view);
         }
 
-        _potLabel = new Label
-        {
-            Position = new Vector2(FeltCenter.X - 60, FeltCenter.Y + 16),
-            Size = new Vector2(120, 12),
-            HorizontalAlignment = HorizontalAlignment.Center,
-        };
+        _potLabel = this.AddAt(new Label { HorizontalAlignment = HorizontalAlignment.Center },
+            new Vector2(FeltCenter.X - 60, FeltCenter.Y + 16), new Vector2(120, 12));
         _potLabel.AddThemeColorOverride("font_color", PixelArt.Gold);
-        AddChild(_potLabel);
 
-        var logPanel = new Panel { Position = new Vector2(4, 318), Size = new Vector2(232, 38) };
-        AddChild(logPanel);
-        _logLabel = new Label { Position = new Vector2(4, 0), Size = new Vector2(224, 38) };
+        var logPanel = this.AddAt(new Panel(), new Vector2(4, 318), new Vector2(232, 38));
+        _logLabel = logPanel.AddAt(new Label(), new Vector2(4, 0), new Vector2(224, 38));
         _logLabel.AddThemeConstantOverride("line_spacing", -2);
-        logPanel.AddChild(_logLabel);
 
-        var menuButton = new Button { Text = "MENU", Position = new Vector2(4, 4), Size = new Vector2(40, 16) };
+        var menuButton = this.AddAt(new Button { Text = "MENU" }, new Vector2(4, 4), new Vector2(40, 18));
         menuButton.Pressed += () => GetTree().ChangeSceneToFile("res://scenes/main_menu.tscn");
-        AddChild(menuButton);
+
+        // Shown under the board, in the (then empty) pot label's spot, once a hand is over.
+        _nextHandButton = this.AddAt(new Button { Text = "NEXT HAND", Visible = false },
+            new Vector2(FeltCenter.X - 50, FeltCenter.Y + 16), new Vector2(100, 22));
+        _nextHandButton.Pressed += () =>
+        {
+            _nextHandButton.Visible = false;
+            _table.ContinueToNextHand();
+        };
 
         BuildActionBar();
     }
 
+    /// <summary>
+    /// Centre of a seat's pair of chip piles: slides from the seat toward the table centre
+    /// until the pair no longer overlaps the seat.
+    /// </summary>
+    private static Vector2 PileUnitPosition(SeatView seat)
+    {
+        var bounds = PileUnitBounds;
+        var seatRect = new Rect2(seat.Position, SeatView.SeatSize).Grow(3);
+        var start = seat.Position + SeatView.SeatSize / 2;
+        for (float t = 0; t < 1; t += 0.01f)
+        {
+            var p = start.Lerp(FeltCenter, t).Round();
+            if (!seatRect.Intersects(new Rect2(p + bounds.Position, bounds.Size)))
+                return p;
+        }
+        return FeltCenter;
+    }
+
+    private static Rect2 PileUnitBounds
+    {
+        get
+        {
+            var b = ChipPileView.Bounds;
+            var stack = new Rect2(b.Position + StackPileOffset, b.Size);
+            return stack.Merge(new Rect2(b.Position + BetPileOffset, b.Size));
+        }
+    }
+
     private void BuildActionBar()
     {
-        _actionBar = new Panel { Position = new Vector2(392, 316), Size = new Vector2(244, 40), Visible = false };
-        AddChild(_actionBar);
+        _actionBar = this.AddAt(new Panel { Visible = false }, new Vector2(392, 316), new Vector2(244, 40));
 
-        _raiseSlider = new HSlider { Position = new Vector2(4, 3), Size = new Vector2(160, 12), Step = 1 };
+        _raiseSlider = _actionBar.AddAt(new HSlider { Step = 1 }, new Vector2(4, 3), new Vector2(160, 12));
         _raiseSlider.ValueChanged += _ => UpdateRaiseLabel();
-        _actionBar.AddChild(_raiseSlider);
-        _raiseLabel = new Label { Position = new Vector2(168, 1), Size = new Vector2(72, 12), HorizontalAlignment = HorizontalAlignment.Right };
-        _actionBar.AddChild(_raiseLabel);
+        _raiseLabel = _actionBar.AddAt(new Label { HorizontalAlignment = HorizontalAlignment.Right },
+            new Vector2(168, 1), new Vector2(72, 12));
 
         _foldButton = ActionButton("FOLD", 4, () => Submit(new Decision(PokerAction.Fold)));
         _callButton = ActionButton("CALL", 84, () => Submit(new Decision(_toCall == 0 ? PokerAction.Check : PokerAction.Call)));
@@ -138,9 +182,8 @@ public partial class TableScene : Control
 
     private Button ActionButton(string text, float x, Action onPressed)
     {
-        var button = new Button { Text = text, Position = new Vector2(x, 19), Size = new Vector2(76, 18) };
+        var button = _actionBar.AddAt(new Button { Text = text }, new Vector2(x, 17), new Vector2(76, 20));
         button.Pressed += onPressed;
-        _actionBar.AddChild(button);
         return button;
     }
 
@@ -200,6 +243,9 @@ public partial class TableScene : Control
                 seat.SetStatus("");
             }
             foreach (var view in _community) view.SetCard(null, false);
+            _winners.Clear();
+            _winningCards.Clear();
+            ApplyWinHighlights();
         };
         _table.StreetStarted += street =>
         {
@@ -245,16 +291,49 @@ public partial class TableScene : Control
         _table.PotAwarded += (player, amount, handName) =>
         {
             _seats[player.Seat].SetStatus($"WINS ${amount}", PixelArt.Gold);
+            _winners.Add(player);
+            // Uncontested pots have no shown hand; only showdown winners light up cards.
+            if (handName != "")
+                _winningCards.UnionWith(HandEvaluator.BestFive(player.HoleCards.Concat(_table.Community).ToList()));
+            ApplyWinHighlights();
             AddLog(handName == ""
                 ? $"{player.DisplayName} wins ${amount}"
                 : $"{player.DisplayName} wins ${amount} ({handName})");
         };
+        _table.WaitingForNextHand += () =>
+        {
+            foreach (var seat in _seats) seat.SetActive(false);
+            _nextHandButton.Visible = true;
+            _nextHandButton.GrabFocus(); // Enter / Space also continue
+        };
         _table.GameOver += ShowGameOver;
+    }
+
+    /// <summary>Gold glow on winners' portraits; lift the winning five cards and dim the rest.</summary>
+    private void ApplyWinHighlights()
+    {
+        ISet<Card>? cards = _winningCards.Count > 0 ? _winningCards : null;
+        foreach (var seat in _seats)
+        {
+            seat.SetWinner(_winners.Contains(seat.Player));
+            seat.HighlightCards(cards);
+        }
+        foreach (var view in _community)
+        {
+            view.SetHighlight(cards == null || view.Card == null ? CardHighlight.None
+                : cards.Contains(view.Card) ? CardHighlight.Winning
+                : CardHighlight.Dimmed);
+        }
     }
 
     private void RefreshSeats()
     {
         foreach (var seat in _seats) seat.Refresh();
+        for (int i = 0; i < _table.Players.Count; i++)
+        {
+            _stackPiles[i].Amount = _table.Players[i].Chips;
+            _betPiles[i].Amount = _table.Players[i].TotalBet;
+        }
         _potLabel.Text = _table.Pot > 0 ? $"POT ${_table.Pot}" : "";
     }
 

@@ -16,7 +16,7 @@ scripts/
   game/PokerTable.cs   rules engine: blinds, betting rounds, side pots, showdown.
                        Async game loop that reports through C# events
   ai/NpcBrain.cs       Monte Carlo equity + personality (Resource)
-  ui/                  TableScene, SeatView, CardView, MainMenu, PixelArt, UiTheme
+  ui/                  TableScene, SeatView, CardView, ChipPileView, MainMenu, PixelArt, UiTheme
   autoload/GameConfig.cs  blinds, stacks, timings, opponent roster
 data/npcs/*.tres     NPC personalities (edit in the inspector)
 assets/sprites/      world_map.png background; fonts/, audio/ are placeholders

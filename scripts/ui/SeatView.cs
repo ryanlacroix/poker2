@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using Godot;
 
 namespace PokerGame;
@@ -19,11 +20,13 @@ public partial class SeatView : Control
     private bool _isDealer;
     private bool _isActive;
     private bool _reveal;
+    private bool _isWinner;
 
     public override void _Ready()
     {
         Size = SeatSize;
         MouseFilter = MouseFilterEnum.Ignore;
+        SetProcess(false); // only runs while the winner glow animates
         // Portrait on the left, cards beside it, dealer button on the right.
         float cardsX = PortraitSize.X + 4;
         for (int i = 0; i < 2; i++)
@@ -40,11 +43,9 @@ public partial class SeatView : Control
 
     private void AddLabel(Label label, float y, Color color)
     {
-        label.Position = new Vector2(0, y);
-        label.Size = new Vector2(SeatSize.X, 12);
         label.HorizontalAlignment = HorizontalAlignment.Center;
         label.AddThemeColorOverride("font_color", color);
-        AddChild(label);
+        this.AddAt(label, new Vector2(0, y), new Vector2(SeatSize.X, 12));
     }
 
     public void Refresh()
@@ -70,6 +71,27 @@ public partial class SeatView : Control
     public void SetActive(bool value) { _isActive = value; QueueRedraw(); }
     public void SetReveal(bool value) { _reveal = value; Refresh(); }
 
+    /// <summary>Make the portrait pulse gold.</summary>
+    public void SetWinner(bool value)
+    {
+        _isWinner = value;
+        SetProcess(value);
+        QueueRedraw();
+    }
+
+    /// <summary>Highlight hole cards in <paramref name="winning"/> and dim the rest; null clears.</summary>
+    public void HighlightCards(ISet<Card>? winning)
+    {
+        foreach (var view in _cards)
+        {
+            view.SetHighlight(winning == null || view.Card == null ? CardHighlight.None
+                : winning.Contains(view.Card) ? CardHighlight.Winning
+                : CardHighlight.Dimmed);
+        }
+    }
+
+    public override void _Process(double delta) => QueueRedraw(); // animates the winner glow
+
     public override void _Draw()
     {
         if (_isActive)
@@ -78,8 +100,15 @@ public partial class SeatView : Control
         {
             var frame = new Rect2(new Vector2(1, 2), PortraitSize);
             bool dimmed = Player.Folded || Player.IsOut;
-            DrawRect(frame.Grow(1), dimmed ? PixelArt.Ink : PixelArt.Paper, false, 1);
-            DrawTextureRect(Portrait, frame, false, dimmed ? new Color(0.45f, 0.45f, 0.5f) : Colors.White);
+            if (_isWinner)
+            {
+                DrawWinnerGlow(frame);
+            }
+            else
+            {
+                DrawRect(frame.Grow(1), dimmed ? PixelArt.Ink : PixelArt.Paper, false, 1);
+                DrawTextureRect(Portrait, frame, false, dimmed ? new Color(0.45f, 0.45f, 0.5f) : Colors.White);
+            }
         }
         if (_isDealer)
         {
@@ -87,6 +116,32 @@ public partial class SeatView : Control
             DrawRect(new Rect2(origin, new Vector2(9, 9)), PixelArt.Paper);
             DrawRect(new Rect2(origin, new Vector2(9, 9)), PixelArt.Ink, false, 1);
             PixelArt.Draw(this, PixelArt.Glyphs['D'], origin + new Vector2(3, 2), 1, PixelArt.Ink);
+        }
+    }
+
+    /// <summary>Gold frame with pulsing halo rings, a warm tint and twinkling corner sparkles.</summary>
+    private void DrawWinnerGlow(Rect2 frame)
+    {
+        float t = Time.GetTicksMsec() / 1000f;
+        float pulse = 0.6f + 0.4f * Mathf.Sin(t * 5f);
+        DrawRect(frame.Grow(4), new Color(PixelArt.Gold, 0.3f * pulse), false, 1);
+        DrawRect(frame.Grow(3), new Color(PixelArt.Gold, 0.6f * pulse), false, 1);
+        DrawRect(frame.Grow(2), new Color("ffe9a0"), false, 1);
+        DrawRect(frame.Grow(1), PixelArt.Gold, false, 1);
+        DrawTextureRect(Portrait!, frame, false, Colors.White.Lerp(new Color("ffe9a0"), 0.5f * pulse));
+        DrawRect(frame, new Color(PixelArt.Gold, 0.25f * pulse));
+
+        // Two diagonal corners twinkle at a time.
+        bool phase = (int)(t * 3) % 2 == 0;
+        var a = phase ? frame.Position + new Vector2(-5, -5) : frame.Position + new Vector2(frame.Size.X + 4, -5);
+        var b = phase ? frame.End + new Vector2(4, 4) : frame.Position + new Vector2(-5, frame.Size.Y + 4);
+        foreach (var p in new[] { a, b })
+        {
+            DrawRect(new Rect2(p, Vector2.One), Colors.White);
+            DrawRect(new Rect2(p + new Vector2(-1, 0), Vector2.One), new Color(PixelArt.Gold, 0.8f));
+            DrawRect(new Rect2(p + new Vector2(1, 0), Vector2.One), new Color(PixelArt.Gold, 0.8f));
+            DrawRect(new Rect2(p + new Vector2(0, -1), Vector2.One), new Color(PixelArt.Gold, 0.8f));
+            DrawRect(new Rect2(p + new Vector2(0, 1), Vector2.One), new Color(PixelArt.Gold, 0.8f));
         }
     }
 }
