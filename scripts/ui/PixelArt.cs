@@ -25,6 +25,10 @@ public static class PixelArt
         new[] { "...X...", "..XXX..", ".XXXXX.", "XXXXXXX", "XXXXXXX", "...X...", "..XXX.." },
     };
 
+    public static readonly string[] Heart = { ".XX.XX.", "XXXXXXX", "XXXXXXX", ".XXXXX.", "..XXX..", "...X..." };
+    public static readonly Color HeartRed = new("e03848");
+    public static readonly Color HeartEmpty = new("3a3448");
+
     // 3x5 glyphs for card ranks plus "D" for the dealer button.
     public static readonly Dictionary<char, string[]> Glyphs = new()
     {

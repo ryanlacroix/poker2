@@ -22,6 +22,8 @@ public partial class SeatView : Control
     public PokerPlayer Player { get; init; } = null!;
     public Texture2D? Portrait { get; init; }
     public SeatStyle Style { get; init; }
+    /// <summary>Heart slots to draw; lost hearts show as empty.</summary>
+    public int MaxHearts { get; init; } = 3;
 
     public static Vector2 SizeFor(SeatStyle style) => style == SeatStyle.Wide ? WideSize : CompactSize;
     public Vector2 SeatSize => SizeFor(Style);
@@ -66,17 +68,18 @@ public partial class SeatView : Control
         float labelsY = IsCompact ? 52 : WideLabelsY;
         if (IsCompact)
         {
-            // Name, chips and status on their own lines.
+            // Name; then hearts under it with the chips at the far end of that line; then status.
+            var chipsAlign = Style == SeatStyle.CompactLeft ? HorizontalAlignment.Right : HorizontalAlignment.Left;
             AddLabel(_name, labelsY, PixelArt.Paper);
-            AddLabel(_chips, labelsY + UiTheme.LineHeight, PixelArt.Gold);
+            AddLabel(_chips, labelsY + UiTheme.LineHeight, PixelArt.Gold, chipsAlign);
             AddLabel(_status, labelsY + UiTheme.LineHeight * 2, new Color("9fe0a0"));
         }
         else
         {
-            // Name left and chips right on one line, status centred below.
+            // Name left and chips right; hearts under the name with the status at the right.
             AddLabel(_name, labelsY, PixelArt.Paper, HorizontalAlignment.Left);
             AddLabel(_chips, labelsY, PixelArt.Gold, HorizontalAlignment.Right);
-            AddLabel(_status, labelsY + UiTheme.LineHeight, new Color("9fe0a0"));
+            AddLabel(_status, labelsY + UiTheme.LineHeight, new Color("9fe0a0"), HorizontalAlignment.Right);
         }
         _name.Text = Player.DisplayName;
         Refresh();
@@ -158,6 +161,7 @@ public partial class SeatView : Control
                 DrawTextureRect(Portrait, frame, false, dimmed ? new Color(0.45f, 0.45f, 0.5f) : Colors.White);
             }
         }
+        DrawHearts();
         if (_isDealer)
         {
             var origin = Style switch
@@ -169,6 +173,29 @@ public partial class SeatView : Control
             DrawRect(new Rect2(origin, new Vector2(9, 9)), PixelArt.Paper);
             DrawRect(new Rect2(origin, new Vector2(9, 9)), PixelArt.Ink, false, 1);
             PixelArt.Draw(this, PixelArt.Glyphs['D'], origin + new Vector2(3, 2), 1, PixelArt.Ink);
+        }
+    }
+
+    /// <summary>Pixel hearts (2x) on the line under the name: full for lives left, empty for lost.</summary>
+    private void DrawHearts()
+    {
+        const int px = 2, spacing = 2;
+        float heartW = PixelArt.Heart[0].Length * px, heartH = PixelArt.Heart.Length * px;
+        float rowWidth = MaxHearts * heartW + (MaxHearts - 1) * spacing;
+        float lineY = (IsCompact ? 52 : WideLabelsY) + UiTheme.LineHeight;
+        float x = Style == SeatStyle.CompactRight ? SeatSize.X - 2 - rowWidth : 2;
+        float y = lineY + Mathf.Floor((UiTheme.LineHeight - heartH) / 2);
+
+        for (int i = 0; i < MaxHearts; i++)
+        {
+            // Right-column seats fill from the right, so the hearts read toward the name's end.
+            bool full = Style == SeatStyle.CompactRight ? i >= MaxHearts - Player.Hearts : i < Player.Hearts;
+            var origin = new Vector2(x + i * (heartW + spacing), y);
+            foreach (var d in new[] { Vector2.Left, Vector2.Right, Vector2.Up, Vector2.Down })
+                PixelArt.Draw(this, PixelArt.Heart, origin + d, px, PixelArt.Ink); // 1px outline
+            PixelArt.Draw(this, PixelArt.Heart, origin, px, full ? PixelArt.HeartRed : PixelArt.HeartEmpty);
+            if (full)
+                DrawRect(new Rect2(origin + new Vector2(px, px), new Vector2(px, px)), new Color(1, 1, 1, 0.7f)); // shine
         }
     }
 

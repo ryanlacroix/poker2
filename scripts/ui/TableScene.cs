@@ -108,6 +108,7 @@ public partial class TableScene : Control
                 Player = player,
                 Portrait = player.Brain?.Portrait ?? humanPortrait,
                 Style = slot.Style,
+                MaxHearts = GameConfig.Instance.StartingHearts,
                 Position = slot.SeatPosition.Round(),
             };
             AddChild(seat);
@@ -287,7 +288,7 @@ public partial class TableScene : Control
             foreach (var p in contenders)
             {
                 _seats[p.Seat].SetReveal(true);
-                _seats[p.Seat].SetStatus(HandEvaluator.Describe(scores[p]).ToUpper(), PixelArt.Paper);
+                _seats[p.Seat].SetStatus(SeatHandName(scores[p]), PixelArt.Paper);
             }
         };
         _table.PotAwarded += (player, amount, handName) =>
@@ -307,6 +308,14 @@ public partial class TableScene : Control
         };
         _table.GameOver += ShowGameOver;
     }
+
+    /// <summary>Hand name short enough for a seat's status line (poker shorthand for the long ones).</summary>
+    private static string SeatHandName(int[] score) => (HandCategory)score[0] switch
+    {
+        HandCategory.ThreeOfAKind => "TRIPS",
+        HandCategory.FourOfAKind => "QUADS",
+        _ => HandEvaluator.Describe(score).ToUpper(),
+    };
 
     /// <summary>Gold glow on winners' portraits; lift the winning five cards and dim the rest.</summary>
     private void ApplyWinHighlights()

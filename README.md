@@ -27,6 +27,10 @@ tests/               headless smoke test
 
 **How it fits together:** `PokerTable` owns the rules and never touches the UI. `TableScene` listens to its events and calls `SubmitHumanAction()` when the human picks an action. NPCs get a `DecisionContext` and return a `Decision`.
 
+## Hearts
+
+Every player starts with 3 hearts (`GameConfig.StartingHearts`), shown as pixel hearts under their name (lost hearts would show as empty outlines). Nothing removes hearts yet. Running out of chips knocks a player out, as before.
+
 ## Portrait layout and Android
 
 The base resolution is 360x640 (portrait), locked to portrait orientation. `PortraitLayout.cs` holds every position:

@@ -10,6 +10,8 @@ public sealed class PokerPlayer
     public bool IsHuman => Brain == null;
     public int Seat { get; set; }
     public int Chips { get; set; }
+    /// <summary>Hearts shown under the player's name. Nothing removes them yet.</summary>
+    public int Hearts { get; set; }
 
     public List<Card> HoleCards { get; } = new();
     /// <summary>Chips put in during the current betting round.</summary>
@@ -22,11 +24,12 @@ public sealed class PokerPlayer
     /// <summary>Busted; no longer dealt in.</summary>
     public bool IsOut { get; private set; }
 
-    public PokerPlayer(string name, int chips, NpcBrain? brain = null)
+    public PokerPlayer(string name, int chips, NpcBrain? brain = null, int hearts = 3)
     {
         DisplayName = name;
         Chips = chips;
         Brain = brain;
+        Hearts = hearts;
     }
 
     public void ResetForHand()
