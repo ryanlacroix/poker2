@@ -81,6 +81,34 @@ public static class PixelArt
         ['D'] = new Color("5a6478"),
     };
 
+    // Pot of gold (12x12): a dark cauldron heaped with coins; shown in place of the word "POT".
+    public static readonly string[] PotOfGold =
+    {
+        "....YYYY....",
+        "..YYWYYyYY..",
+        ".YYyYYYYWYY.",
+        "KKKKKKKKKKKK",
+        "KrrrrrrrrrrK",
+        ".KCCCCCCCCK.",
+        "KChCCCCCCCCK",
+        "KChCCCCCCCCK",
+        "KCCCCCCCCCCK",
+        ".KCCCCCCCCK.",
+        "..KKKKKKKK..",
+        "..KK....KK..",
+    };
+
+    public static readonly Dictionary<char, Color> PotOfGoldColors = new()
+    {
+        ['Y'] = Gold,
+        ['y'] = new Color("c08a20"),
+        ['W'] = new Color("fff6d0"),
+        ['K'] = Ink,
+        ['r'] = new Color("6a6a7c"),
+        ['C'] = new Color("2e2e3c"),
+        ['h'] = new Color("4a4a5c"),
+    };
+
     public static readonly string[] MuzzleFlash =
     {
         "..Y.Y..",

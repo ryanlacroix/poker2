@@ -39,7 +39,11 @@ public partial class TableScene : Control
     private readonly List<CardView> _community = new();
     private readonly HashSet<PokerPlayer> _winners = new();
     private readonly HashSet<Card> _winningCards = new();
-    private Label _potLabel = null!;
+    private PotView _pot = null!;
+    private int _shownPot;
+    private Tween? _potTween;
+    private const int PotFontSize = UiTheme.FontSize + 4;
+    private const int PotPopSize = PotFontSize + 6;
     private Panel _actionBar = null!;
     private Button _foldButton = null!;
     private Button _callButton = null!;
@@ -145,9 +149,8 @@ public partial class TableScene : Control
             _community.Add(view);
         }
 
-        _potLabel = this.AddAt(new Label { HorizontalAlignment = HorizontalAlignment.Center },
-            potCenter - new Vector2(60, UiTheme.LineHeight / 2), new Vector2(120, UiTheme.LineHeight));
-        _potLabel.AddThemeColorOverride("font_color", PixelArt.Gold);
+        // Pot of gold + amount; the box is tall and centred so it grows from its middle when it pops.
+        _pot = this.AddAt(new PotView { FontSize = PotFontSize }, potCenter - new Vector2(80, 20), new Vector2(160, 40));
 
         var menuButton = this.AddAt(new Button { Text = "MENU" }, _layout.MenuButton.Position, _layout.MenuButton.Size);
         menuButton.Pressed += () => GetTree().ChangeSceneToFile("res://scenes/main_menu.tscn");
@@ -405,7 +408,22 @@ public partial class TableScene : Control
             _stackPiles[i].Amount = _table.Players[i].Chips;
             _betPiles[i].Amount = _table.Players[i].TotalBet;
         }
-        _potLabel.Text = _table.Pot > 0 ? $"POT ${_table.Pot}" : "";
+        int pot = _table.Pot;
+        _pot.Amount = pot;
+        if (pot > _shownPot) PopPotLabel();
+        _shownPot = pot;
+    }
+
+    /// <summary>Money went into the pot: the pot display swells briefly, then settles back.</summary>
+    private void PopPotLabel()
+    {
+        _potTween?.Kill();
+        var setSize = Callable.From<float>(size => _pot.FontSize = Mathf.RoundToInt(size));
+        _potTween = CreateTween();
+        _potTween.TweenMethod(setSize, (float)PotFontSize, (float)PotPopSize, 0.08)
+            .SetTrans(Tween.TransitionType.Quad).SetEase(Tween.EaseType.Out);
+        _potTween.TweenMethod(setSize, (float)PotPopSize, (float)PotFontSize, 0.2)
+            .SetTrans(Tween.TransitionType.Quad).SetEase(Tween.EaseType.In);
     }
 
     private void ShowGameOver(PokerPlayer winner)
