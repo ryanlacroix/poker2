@@ -54,6 +54,7 @@ public partial class TableScene : Control
     private Button _nextHandButton = null!;
     private PistolView _pistol = null!;
     private Label _targetHint = null!;
+    private WinBanner _winBanner = null!;
     private bool _targeting;
     private int _toCall;
 
@@ -183,6 +184,9 @@ public partial class TableScene : Control
         _targetHint.AddThemeColorOverride("font_color", PixelArt.HeartRed);
 
         BuildActionBar();
+
+        // Added last so it draws over everything else.
+        _winBanner = this.AddAt(new WinBanner { MaxBottom = _layout.BoardOrigin.Y - 4 }, Vector2.Zero, GetViewportRect().Size);
     }
 
     private void BuildActionBar()
@@ -276,6 +280,7 @@ public partial class TableScene : Control
             _winners.Clear();
             _winningCards.Clear();
             _scoringCards.Clear();
+            _winBanner.Hide();
             ApplyWinHighlights();
         };
         _table.StreetStarted += street =>
@@ -316,6 +321,10 @@ public partial class TableScene : Control
                 _seats[p.Seat].SetReveal(true);
                 _seats[p.Seat].SetStatus(SeatHandName(scores[p]), PixelArt.Paper);
             }
+            // Announce the best hand at the table (it takes the main pot) and whoever holds it.
+            var best = contenders.Select(p => scores[p]).Aggregate((a, b) => HandEvaluator.Compare(a, b) >= 0 ? a : b);
+            var names = contenders.Where(p => HandEvaluator.Compare(scores[p], best) == 0).Select(p => p.DisplayName.ToUpper());
+            _winBanner.Show(HandEvaluator.Describe(best).ToUpper(), string.Join(" & ", names));
         };
         _table.PotAwarded += (player, amount, handName) =>
         {
@@ -333,20 +342,34 @@ public partial class TableScene : Control
         _table.WaitingForNextHand += () =>
         {
             foreach (var seat in _seats) seat.SetActive(false);
-            // Winning a hand earns a shot at an NPC; otherwise just wait for NEXT HAND.
-            var targets = _seats.Where(s => !s.Player.IsHuman && s.Player.Hearts > 0 && s.Player.Chips > 0).ToList();
-            bool earnedShot = _winners.Contains(_table.Players[0]) || GameConfig.Instance.DebugTargetEveryHand;
-            if (earnedShot && targets.Count > 0)
-            {
-                EnterTargetMode(targets);
-            }
-            else
-            {
-                _nextHandButton.Visible = true;
-                _nextHandButton.GrabFocus(); // Enter / Space also continue
-            }
+            // Let the winning-hand banner finish before the pistol or NEXT HAND take the screen.
+            if (_winBanner.Visible) _winBanner.Finished += AfterBanner;
+            else AfterHand();
         };
         _table.GameOver += ShowGameOver;
+    }
+
+    private void AfterBanner()
+    {
+        _winBanner.Finished -= AfterBanner;
+        AfterHand();
+    }
+
+    /// <summary>The hand is settled: offer a shot at an NPC if it was earned, else NEXT HAND.</summary>
+    private void AfterHand()
+    {
+        // Winning a hand earns a shot at an NPC; otherwise just wait for NEXT HAND.
+        var targets = _seats.Where(s => !s.Player.IsHuman && s.Player.Hearts > 0 && s.Player.Chips > 0).ToList();
+        bool earnedShot = _winners.Contains(_table.Players[0]) || GameConfig.Instance.DebugTargetEveryHand;
+        if (earnedShot && targets.Count > 0)
+        {
+            EnterTargetMode(targets);
+        }
+        else
+        {
+            _nextHandButton.Visible = true;
+            _nextHandButton.GrabFocus(); // Enter / Space also continue
+        }
     }
 
     private void EnterTargetMode(List<SeatView> targets)
