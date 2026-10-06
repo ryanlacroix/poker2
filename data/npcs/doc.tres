@@ -1,0 +1,13 @@
+[gd_resource type="Resource" script_class="NpcBrain" format=3]
+
+[ext_resource type="Script" path="res://scripts/ai/NpcBrain.cs" id="1"]
+[ext_resource type="Texture2D" path="res://assets/portraits/doc.png" id="2"]
+
+[resource]
+script = ExtResource("1")
+DisplayName = "DOC"
+Tightness = 0.55
+Aggression = 0.5
+BluffRate = 0.08
+Simulations = 1000
+Portrait = ExtResource("2")

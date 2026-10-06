@@ -1,0 +1,14 @@
+[gd_resource type="Resource" script_class="NpcBrain" format=3]
+
+[ext_resource type="Script" path="res://scripts/ai/NpcBrain.cs" id="1"]
+[ext_resource type="Texture2D" path="res://assets/portraits/lucky.png" id="2"]
+
+[resource]
+script = ExtResource("1")
+DisplayName = "LUCKY"
+Tightness = 0.15
+Aggression = 0.15
+BluffRate = 0.05
+Simulations = 200
+Randomness = 0.15
+Portrait = ExtResource("2")

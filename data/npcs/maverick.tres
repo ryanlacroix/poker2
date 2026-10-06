@@ -1,0 +1,13 @@
+[gd_resource type="Resource" script_class="NpcBrain" format=3]
+
+[ext_resource type="Script" path="res://scripts/ai/NpcBrain.cs" id="1"]
+[ext_resource type="Texture2D" path="res://assets/portraits/maverick.png" id="2"]
+
+[resource]
+script = ExtResource("1")
+DisplayName = "MAVERICK"
+Tightness = 0.2
+Aggression = 0.85
+BluffRate = 0.22
+Simulations = 300
+Portrait = ExtResource("2")
