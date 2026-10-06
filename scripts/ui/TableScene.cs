@@ -53,6 +53,8 @@ public partial class TableScene : Control
     private Label _raiseLabel = null!;
     private Button _nextHandButton = null!;
     private PistolView _pistol = null!;
+    private ColorRect _shotDarken = null!;
+    private Tween? _shotDarkenTween;
     private Label _targetHint = null!;
     private WinBanner _winBanner = null!;
     private bool _targeting;
@@ -174,6 +176,14 @@ public partial class TableScene : Control
             Position = (GetViewportRect().Size / 2 - PistolView.ArtSize / 2).Round(),
         };
         AddChild(_pistol);
+        // Gunshot flash-to-dark over the table; the pistol and portraits sit above it.
+        _shotDarken = this.AddAt(new ColorRect
+        {
+            Color = new Color(0, 0, 0, 0),
+            MouseFilter = MouseFilterEnum.Ignore,
+            ZIndex = SeatView.DarkenZ,
+        }, Vector2.Zero, GetViewportRect().Size);
+        _pistol.ZIndex = SeatView.DarkenZ + 1;
         _targetHint = this.AddAt(new Label
         {
             Text = "PICK A TARGET",
@@ -390,6 +400,7 @@ public partial class TableScene : Control
         _targetHint.Visible = false;
 
         _pistol.Fire();
+        DarkenForShot();
         target.FlashHit();
         bool eliminated = _table.RemoveHeart(target.Player, _table.Players[0]);
         target.SetStatus(eliminated ? "ELIMINATED" : "DIRECT HIT", PixelArt.HeartRed);
@@ -402,6 +413,16 @@ public partial class TableScene : Control
             _pistol.SetProcess(false);
             _table.ContinueToNextHand();
         };
+    }
+
+    /// <summary>The table drops to near-black on the shot, then quickly fades back.</summary>
+    private void DarkenForShot()
+    {
+        _shotDarkenTween?.Kill();
+        _shotDarken.Color = new Color(0, 0, 0, 0.8f);
+        _shotDarkenTween = CreateTween();
+        _shotDarkenTween.TweenProperty(_shotDarken, "color:a", 0f, 0.5f)
+            .SetTrans(Tween.TransitionType.Quad).SetEase(Tween.EaseType.In);
     }
 
     /// <summary>Hand name short enough for a seat's status line (poker shorthand for the long ones).</summary>

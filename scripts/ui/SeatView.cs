@@ -41,6 +41,7 @@ public partial class SeatView : Control
     private readonly Label _name = new();
     private readonly Label _chips = new();
     private readonly Label _status = new();
+    private readonly Control _portraitLayer = new() { MouseFilter = MouseFilterEnum.Ignore };
     private bool _isDealer;
     private bool _isActive;
     private bool _reveal;
@@ -48,6 +49,12 @@ public partial class SeatView : Control
     private bool _isTarget;
     private double _hitAt = -1;
     private const double HitSeconds = 0.6;
+
+    /// <summary>
+    /// Z index of the shot's screen-darkening overlay. Portraits (and the pistol) draw above it;
+    /// everything else stays below.
+    /// </summary>
+    public const int DarkenZ = 1;
 
     /// <summary>Raised when the human taps this seat while it is targetable.</summary>
     public event System.Action<SeatView>? Targeted;
@@ -88,6 +95,9 @@ public partial class SeatView : Control
             AddLabel(_status, labelsY + UiTheme.LineHeight, new Color("9fe0a0"), HorizontalAlignment.Right);
         }
         _name.Text = Player.DisplayName;
+        _portraitLayer.ZIndex = DarkenZ + 1;
+        _portraitLayer.Draw += () => DrawPortrait(_portraitLayer);
+        AddChild(_portraitLayer);
         Refresh();
     }
 
@@ -184,30 +194,7 @@ public partial class SeatView : Control
         DrawRect(new Rect2(-1, -1, SeatSize + new Vector2(2, 2)), new Color(0.05f, 0.06f, 0.11f, 0.78f));
         if (_isActive)
             DrawRect(new Rect2(-2, -2, SeatSize + new Vector2(4, 4)), PixelArt.Gold, false, 1);
-        if (Portrait != null)
-        {
-            var frame = PortraitFrame;
-            bool dimmed = Player.Folded || Player.IsOut;
-            if (_isWinner)
-            {
-                DrawWinnerGlow(frame);
-            }
-            else if (_isTarget)
-            {
-                DrawTargetGlow(frame);
-            }
-            else
-            {
-                DrawRect(frame.Grow(1), dimmed ? PixelArt.Ink : PixelArt.Paper, false, 1);
-                DrawTextureRect(Portrait, frame, false, dimmed ? new Color(0.45f, 0.45f, 0.5f) : Colors.White);
-            }
-            if (HitActive)
-            {
-                float k = 1f - (float)((Time.GetTicksMsec() / 1000.0 - _hitAt) / HitSeconds);
-                bool blink = (int)(Time.GetTicksMsec() / 80) % 2 == 0;
-                DrawRect(frame, new Color(blink ? Colors.White : PixelArt.HeartRed, 0.65f * k));
-            }
-        }
+        _portraitLayer.QueueRedraw();
         DrawHearts();
         if (_isDealer)
         {
@@ -246,32 +233,62 @@ public partial class SeatView : Control
         }
     }
 
+    /// <summary>
+    /// The portrait with its frame, glow and hit flash. Drawn onto <see cref="_portraitLayer"/>,
+    /// which sits above <see cref="DarkenZ"/> so the screen can darken around the faces.
+    /// </summary>
+    private void DrawPortrait(CanvasItem c)
+    {
+        if (Portrait == null) return;
+        var frame = PortraitFrame;
+        bool dimmed = Player.Folded || Player.IsOut;
+        if (_isWinner)
+        {
+            DrawWinnerGlow(c, frame);
+        }
+        else if (_isTarget)
+        {
+            DrawTargetGlow(c, frame);
+        }
+        else
+        {
+            c.DrawRect(frame.Grow(1), dimmed ? PixelArt.Ink : PixelArt.Paper, false, 1);
+            c.DrawTextureRect(Portrait, frame, false, dimmed ? new Color(0.45f, 0.45f, 0.5f) : Colors.White);
+        }
+        if (HitActive)
+        {
+            float k = 1f - (float)((Time.GetTicksMsec() / 1000.0 - _hitAt) / HitSeconds);
+            bool blink = (int)(Time.GetTicksMsec() / 80) % 2 == 0;
+            c.DrawRect(frame, new Color(blink ? Colors.White : PixelArt.HeartRed, 0.65f * k));
+        }
+    }
+
     /// <summary>Red pulsing halo and tint for a seat that can be targeted, plus a red seat outline.</summary>
-    private void DrawTargetGlow(Rect2 frame)
+    private void DrawTargetGlow(CanvasItem c, Rect2 frame)
     {
         float t = Time.GetTicksMsec() / 1000f;
         float pulse = 0.55f + 0.45f * Mathf.Sin(t * 6f);
         var red = PixelArt.HeartRed;
-        DrawRect(new Rect2(-2, -2, SeatSize + new Vector2(4, 4)), new Color(red, 0.5f + 0.5f * pulse), false, 1);
-        DrawRect(frame.Grow(4), new Color(red, 0.3f * pulse), false, 1);
-        DrawRect(frame.Grow(3), new Color(red, 0.6f * pulse), false, 1);
-        DrawRect(frame.Grow(2), new Color("ff8a8a"), false, 1);
-        DrawRect(frame.Grow(1), red, false, 1);
-        DrawTextureRect(Portrait!, frame, false, Colors.White.Lerp(new Color("ff9090"), 0.55f * pulse));
-        DrawRect(frame, new Color(red, 0.22f * pulse));
+        c.DrawRect(new Rect2(-2, -2, SeatSize + new Vector2(4, 4)), new Color(red, 0.5f + 0.5f * pulse), false, 1);
+        c.DrawRect(frame.Grow(4), new Color(red, 0.3f * pulse), false, 1);
+        c.DrawRect(frame.Grow(3), new Color(red, 0.6f * pulse), false, 1);
+        c.DrawRect(frame.Grow(2), new Color("ff8a8a"), false, 1);
+        c.DrawRect(frame.Grow(1), red, false, 1);
+        c.DrawTextureRect(Portrait!, frame, false, Colors.White.Lerp(new Color("ff9090"), 0.55f * pulse));
+        c.DrawRect(frame, new Color(red, 0.22f * pulse));
     }
 
     /// <summary>Gold frame with pulsing halo rings, a warm tint and twinkling corner sparkles.</summary>
-    private void DrawWinnerGlow(Rect2 frame)
+    private void DrawWinnerGlow(CanvasItem c, Rect2 frame)
     {
         float t = Time.GetTicksMsec() / 1000f;
         float pulse = 0.6f + 0.4f * Mathf.Sin(t * 5f);
-        DrawRect(frame.Grow(4), new Color(PixelArt.Gold, 0.3f * pulse), false, 1);
-        DrawRect(frame.Grow(3), new Color(PixelArt.Gold, 0.6f * pulse), false, 1);
-        DrawRect(frame.Grow(2), new Color("ffe9a0"), false, 1);
-        DrawRect(frame.Grow(1), PixelArt.Gold, false, 1);
-        DrawTextureRect(Portrait!, frame, false, Colors.White.Lerp(new Color("ffe9a0"), 0.5f * pulse));
-        DrawRect(frame, new Color(PixelArt.Gold, 0.25f * pulse));
+        c.DrawRect(frame.Grow(4), new Color(PixelArt.Gold, 0.3f * pulse), false, 1);
+        c.DrawRect(frame.Grow(3), new Color(PixelArt.Gold, 0.6f * pulse), false, 1);
+        c.DrawRect(frame.Grow(2), new Color("ffe9a0"), false, 1);
+        c.DrawRect(frame.Grow(1), PixelArt.Gold, false, 1);
+        c.DrawTextureRect(Portrait!, frame, false, Colors.White.Lerp(new Color("ffe9a0"), 0.5f * pulse));
+        c.DrawRect(frame, new Color(PixelArt.Gold, 0.25f * pulse));
 
         // Two diagonal corners twinkle at a time.
         bool phase = (int)(t * 3) % 2 == 0;
@@ -279,11 +296,11 @@ public partial class SeatView : Control
         var b = phase ? frame.End + new Vector2(4, 4) : frame.Position + new Vector2(-5, frame.Size.Y + 4);
         foreach (var p in new[] { a, b })
         {
-            DrawRect(new Rect2(p, Vector2.One), Colors.White);
-            DrawRect(new Rect2(p + new Vector2(-1, 0), Vector2.One), new Color(PixelArt.Gold, 0.8f));
-            DrawRect(new Rect2(p + new Vector2(1, 0), Vector2.One), new Color(PixelArt.Gold, 0.8f));
-            DrawRect(new Rect2(p + new Vector2(0, -1), Vector2.One), new Color(PixelArt.Gold, 0.8f));
-            DrawRect(new Rect2(p + new Vector2(0, 1), Vector2.One), new Color(PixelArt.Gold, 0.8f));
+            c.DrawRect(new Rect2(p, Vector2.One), Colors.White);
+            c.DrawRect(new Rect2(p + new Vector2(-1, 0), Vector2.One), new Color(PixelArt.Gold, 0.8f));
+            c.DrawRect(new Rect2(p + new Vector2(1, 0), Vector2.One), new Color(PixelArt.Gold, 0.8f));
+            c.DrawRect(new Rect2(p + new Vector2(0, -1), Vector2.One), new Color(PixelArt.Gold, 0.8f));
+            c.DrawRect(new Rect2(p + new Vector2(0, 1), Vector2.One), new Color(PixelArt.Gold, 0.8f));
         }
     }
 }
