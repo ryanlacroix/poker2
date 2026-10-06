@@ -14,12 +14,14 @@ public partial class CardView : Control
     private CardHighlight _highlight;
 
     public bool ShowEmptySlot { get; set; }
+    /// <summary>Whole-number size multiplier; the pixel art is drawn scaled so it stays crisp.</summary>
+    public int PixelScale { get; init; } = 1;
     public Card? Card => _card;
 
     public override void _Ready()
     {
-        CustomMinimumSize = CardSize;
-        Size = CardSize;
+        CustomMinimumSize = CardSize * PixelScale;
+        Size = CardSize * PixelScale;
         MouseFilter = MouseFilterEnum.Ignore;
     }
 
@@ -40,8 +42,8 @@ public partial class CardView : Control
     public override void _Draw()
     {
         var rect = new Rect2(Vector2.Zero, CardSize);
-        if (_card != null && _highlight == CardHighlight.Winning)
-            DrawSetTransform(new Vector2(0, -3));
+        float lift = _card != null && _highlight == CardHighlight.Winning ? -3 * PixelScale : 0;
+        DrawSetTransform(new Vector2(0, lift), 0, Vector2.One * PixelScale);
         DrawCard(rect);
         if (_card == null) return;
         if (_highlight == CardHighlight.Winning)

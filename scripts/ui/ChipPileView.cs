@@ -5,8 +5,9 @@ using Godot;
 namespace PokerGame;
 
 /// <summary>
-/// A small pixel-art pile of chips sitting on the felt in front of a seat. The pile grows
-/// (sub-linearly) with <see cref="Amount"/>; chip colours follow standard denominations.
+/// A pixel-art pile of chips sitting on the felt beside a seat, drawn at a whole-number
+/// <see cref="PixelScale"/> so the art stays crisp. The pile grows (logarithmically) with
+/// <see cref="Amount"/> up to three stacks of five; chip colours follow standard denominations.
 /// The node's position is the base centre of the pile.
 /// </summary>
 public partial class ChipPileView : Control
@@ -14,16 +15,23 @@ public partial class ChipPileView : Control
     private const int ChipWidth = 8;
     private const int ChipHeight = 2;
     private const int ChipsPerColumn = 5;
-    private const int MaxChips = 30;
+    private const int MaxChips = 15;
+    /// <summary>Pixel-art scale of the chips and of the amount label's digits.</summary>
+    public const int PixelScale = 2;
+    private const int LabelY = 6; // top of the digits, below the chips
 
-    /// <summary>Area the largest pile (plus its label) can cover, relative to the node's position.</summary>
-    public static readonly Rect2 Bounds = new(-18, -18, 33, 30);
+    // Base offset of each column (unscaled), in fill order: two in front, one behind (drawn first).
+    private static readonly Vector2I[] ColumnOffsets = { new(-4, 0), new(5, 0), new(0, -4) };
 
-    // Base offset of each column, in fill order. Back row (y = -4) is drawn first.
-    private static readonly Vector2I[] ColumnOffsets =
+    /// <summary>Area the largest pile can cover (plus its label), relative to the node's position.</summary>
+    public static Rect2 BoundsFor(bool showLabel)
     {
-        new(-4, 0), new(5, 0), new(0, -4), new(-9, -4), new(9, -4), new(-13, 0),
-    };
+        // Unscaled chips span x -9..11 (outline + shadow), y -16..2.
+        var chips = new Rect2(-9 * PixelScale, -16 * PixelScale, 20 * PixelScale, 18 * PixelScale);
+        // Label: up to 4 digits of 3x5 glyphs (4px advance) at PixelScale, plus a 2px backing.
+        float labelWidth = (4 * 4 - 1) * PixelScale + 4;
+        return showLabel ? chips.Merge(new Rect2(-labelWidth / 2, LabelY - 2, labelWidth, 5 * PixelScale + 4)) : chips;
+    }
 
     private static readonly (int Value, Color Body, Color Stripe)[] Denominations =
     {
@@ -68,8 +76,9 @@ public partial class ChipPileView : Control
                 exact.Add(d);
         }
 
-        // ...resampled to a chip count that always grows with the amount but stays small.
-        int count = Math.Clamp((int)Math.Ceiling(Math.Sqrt(_amount / 4.0)), 1, MaxChips);
+        // ...resampled to a chip count that keeps growing with the amount but stays compact
+        // (10 -> 2 chips, 100 -> 7, 1000 -> 12, 7000 -> 15).
+        int count = Math.Clamp((int)Math.Round(2.2 * Math.Log(_amount / 5.0 + 1)), 1, MaxChips);
         for (int i = 0; i < count; i++)
             _chips.Add(exact[i * exact.Count / count]);
     }
@@ -78,6 +87,7 @@ public partial class ChipPileView : Control
     {
         if (_chips.Count == 0) return;
 
+        DrawSetTransform(Vector2.Zero, 0, Vector2.One * PixelScale);
         int columns = (_chips.Count + ChipsPerColumn - 1) / ChipsPerColumn;
         var order = new List<int>();
         for (int c = 0; c < columns; c++) order.Add(c);
@@ -90,6 +100,7 @@ public partial class ChipPileView : Control
             DrawColumn(ColumnOffsets[c], _chips.GetRange(start, height));
         }
 
+        DrawSetTransform(Vector2.Zero);
         if (ShowLabel) DrawAmount();
     }
 
@@ -122,9 +133,9 @@ public partial class ChipPileView : Control
     private void DrawAmount()
     {
         string text = _amount.ToString();
-        int width = text.Length * 4 - 1;
-        var origin = new Vector2(-width / 2, 4);
-        DrawRect(new Rect2(origin - Vector2.One, new Vector2(width + 2, 7)), new Color(0, 0, 0, 0.45f));
-        PixelArt.DrawText(this, text, origin, 1, PixelArt.Gold);
+        int width = (text.Length * 4 - 1) * PixelScale;
+        var origin = new Vector2(-width / 2, LabelY);
+        DrawRect(new Rect2(origin - Vector2.One * 2, new Vector2(width + 4, 5 * PixelScale + 4)), new Color(0, 0, 0, 0.45f));
+        PixelArt.DrawText(this, text, origin, PixelScale, PixelArt.Gold);
     }
 }

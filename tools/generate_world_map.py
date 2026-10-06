@@ -7,7 +7,8 @@ halo, lighter coastline, polar ice, faint lat/long grid).
 
     python3 tools/generate_world_map.py [width height]
 
-Requires Pillow. Writes assets/sprites/world_map.png (default 160x90, shown at 4x).
+Requires Pillow. Writes assets/sprites/world_map.png (default 400x200, i.e. 0.9 degrees
+per cell). The game draws a crop of it at 4x, sized to fill the portrait screen.
 """
 import json
 import sys
@@ -64,7 +65,7 @@ def land_mask(width, height):
 
 
 def main():
-    width, height = (int(sys.argv[1]), int(sys.argv[2])) if len(sys.argv) == 3 else (160, 90)
+    width, height = (int(sys.argv[1]), int(sys.argv[2])) if len(sys.argv) == 3 else (400, 200)
     land = land_mask(width, height)
 
     def is_land(x, y):

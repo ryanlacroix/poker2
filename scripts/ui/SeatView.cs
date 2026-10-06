@@ -3,17 +3,39 @@ using Godot;
 
 namespace PokerGame;
 
+/// <summary>
+/// Wide: the human's seat, with 2x cards beside the portrait. Compact: the NPC columns, 1x cards
+/// beside the portrait (mirrored on the right); text aligns toward the middle of the screen so
+/// long labels never run off it.
+/// </summary>
+public enum SeatStyle { Wide, CompactLeft, CompactRight }
+
 /// <summary>One player's spot at the table: portrait, hole cards, name, stack and last action.</summary>
 public partial class SeatView : Control
 {
-    public static readonly Vector2 SeatSize = new(104, 76);
-
-    public static readonly Vector2 PortraitSize = new(32, 32);
+    public static readonly Vector2 WideSize = new(160, 74 + UiTheme.LineHeight * 2);
+    public static readonly Vector2 CompactSize = new(106, 52 + UiTheme.LineHeight * 3);
+    /// <summary>Portraits: the 16px art at a crisp 3x.</summary>
+    public static readonly Vector2 PortraitSize = new(48, 48);
+    private const int WideCardScale = 2;
 
     public PokerPlayer Player { get; init; } = null!;
     public Texture2D? Portrait { get; init; }
+    public SeatStyle Style { get; init; }
 
-    private readonly CardView[] _cards = { new(), new() };
+    public static Vector2 SizeFor(SeatStyle style) => style == SeatStyle.Wide ? WideSize : CompactSize;
+    public Vector2 SeatSize => SizeFor(Style);
+    private bool IsCompact => Style != SeatStyle.Wide;
+    private static float WideLabelsY => CardView.CardSize.Y * WideCardScale + 2; // just under the 2x cards
+    // Compact seats mirror: left column is [portrait][cards], right column is [cards][portrait].
+    private Rect2 PortraitFrame => Style switch
+    {
+        SeatStyle.CompactLeft => new Rect2(new Vector2(1, 1), PortraitSize),
+        SeatStyle.CompactRight => new Rect2(new Vector2(CompactSize.X - 1 - PortraitSize.X, 1), PortraitSize),
+        _ => new Rect2(new Vector2(1, 12), PortraitSize),
+    };
+
+    private CardView[] _cards = System.Array.Empty<CardView>();
     private readonly Label _name = new();
     private readonly Label _chips = new();
     private readonly Label _status = new();
@@ -27,25 +49,49 @@ public partial class SeatView : Control
         Size = SeatSize;
         MouseFilter = MouseFilterEnum.Ignore;
         SetProcess(false); // only runs while the winner glow animates
-        // Portrait on the left, cards beside it, dealer button on the right.
-        float cardsX = PortraitSize.X + 4;
+        // Cards sit beside the portrait (on the inner side for compact seats).
+        int cardScale = IsCompact ? 1 : WideCardScale;
+        _cards = new[] { new CardView { PixelScale = cardScale }, new CardView { PixelScale = cardScale } };
+        var cardsOrigin = Style switch
+        {
+            SeatStyle.CompactLeft => new Vector2(PortraitSize.X + 4, 7),
+            SeatStyle.CompactRight => new Vector2(0, 7),
+            _ => new Vector2(PortraitSize.X + 4, 0),
+        };
         for (int i = 0; i < 2; i++)
         {
-            _cards[i].Position = new Vector2(cardsX + i * (CardView.CardSize.X + 2), 0);
+            _cards[i].Position = cardsOrigin + new Vector2(i * (CardView.CardSize.X * cardScale + 2), 0);
             AddChild(_cards[i]);
         }
-        AddLabel(_name, 38, PixelArt.Paper);
-        AddLabel(_chips, 50, PixelArt.Gold);
-        AddLabel(_status, 62, new Color("9fe0a0"));
+        float labelsY = IsCompact ? 52 : WideLabelsY;
+        if (IsCompact)
+        {
+            // Name, chips and status on their own lines.
+            AddLabel(_name, labelsY, PixelArt.Paper);
+            AddLabel(_chips, labelsY + UiTheme.LineHeight, PixelArt.Gold);
+            AddLabel(_status, labelsY + UiTheme.LineHeight * 2, new Color("9fe0a0"));
+        }
+        else
+        {
+            // Name left and chips right on one line, status centred below.
+            AddLabel(_name, labelsY, PixelArt.Paper, HorizontalAlignment.Left);
+            AddLabel(_chips, labelsY, PixelArt.Gold, HorizontalAlignment.Right);
+            AddLabel(_status, labelsY + UiTheme.LineHeight, new Color("9fe0a0"));
+        }
         _name.Text = Player.DisplayName;
         Refresh();
     }
 
-    private void AddLabel(Label label, float y, Color color)
+    private void AddLabel(Label label, float y, Color color, HorizontalAlignment? align = null)
     {
-        label.HorizontalAlignment = HorizontalAlignment.Center;
+        label.HorizontalAlignment = align ?? Style switch
+        {
+            SeatStyle.CompactLeft => HorizontalAlignment.Left,
+            SeatStyle.CompactRight => HorizontalAlignment.Right,
+            _ => HorizontalAlignment.Center,
+        };
         label.AddThemeColorOverride("font_color", color);
-        this.AddAt(label, new Vector2(0, y), new Vector2(SeatSize.X, 12));
+        this.AddAt(label, new Vector2(0, y), new Vector2(SeatSize.X, UiTheme.LineHeight));
     }
 
     public void Refresh()
@@ -94,11 +140,13 @@ public partial class SeatView : Control
 
     public override void _Draw()
     {
+        // Dark backing so labels stay readable over any part of the map.
+        DrawRect(new Rect2(-1, -1, SeatSize + new Vector2(2, 2)), new Color(0.05f, 0.06f, 0.11f, 0.78f));
         if (_isActive)
             DrawRect(new Rect2(-2, -2, SeatSize + new Vector2(4, 4)), PixelArt.Gold, false, 1);
         if (Portrait != null)
         {
-            var frame = new Rect2(new Vector2(1, 2), PortraitSize);
+            var frame = PortraitFrame;
             bool dimmed = Player.Folded || Player.IsOut;
             if (_isWinner)
             {
@@ -112,7 +160,12 @@ public partial class SeatView : Control
         }
         if (_isDealer)
         {
-            var origin = new Vector2(SeatSize.X - 12, 2);
+            var origin = Style switch
+            {
+                SeatStyle.CompactLeft => new Vector2(SeatSize.X - 10, 53),
+                SeatStyle.CompactRight => new Vector2(1, 53),
+                _ => new Vector2(1, PortraitFrame.End.Y + 3), // under the portrait
+            };
             DrawRect(new Rect2(origin, new Vector2(9, 9)), PixelArt.Paper);
             DrawRect(new Rect2(origin, new Vector2(9, 9)), PixelArt.Ink, false, 1);
             PixelArt.Draw(this, PixelArt.Glyphs['D'], origin + new Vector2(3, 2), 1, PixelArt.Ink);

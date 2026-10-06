@@ -9,7 +9,10 @@ public partial class GameConfig : Node
 {
     public static GameConfig Instance { get; private set; } = null!;
 
-    /// <summary>NPC personalities seated at the table, in seat order (clockwise from the human).</summary>
+    /// <summary>
+    /// NPC personalities seated at the table, in seat order (clockwise from the human).
+    /// The portrait table has room for up to <see cref="PortraitLayout.MaxOpponents"/>.
+    /// </summary>
     public static readonly string[] OpponentPaths =
     {
         "res://data/npcs/rocky.tres",    // tight-passive

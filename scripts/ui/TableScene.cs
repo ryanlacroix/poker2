@@ -11,14 +11,27 @@ namespace PokerGame;
 /// </summary>
 public partial class TableScene : Control
 {
-    private static readonly Vector2 FeltCenter = new(320, 160);
-    private static readonly Vector2 FeltRadii = new(250, 108);
-    private static readonly Vector2 SeatRadii = new(262, 118);
-    private static readonly Vector2 StackPileOffset = new(-17, 0);
-    private static readonly Vector2 BetPileOffset = new(19, 0);
-    private const int LogLines = 3;
+    // Stack pile (no label) and bet pile (with label) offsets from a pair's centre.
+    private static readonly Vector2 StackPileOffset = new(-22, 0);
+    private static readonly Vector2 BetPileOffset = new(22, 0);
+    private static readonly Vector2 StackPileOffsetVertical = new(0, -19);
+    private static readonly Vector2 BetPileOffsetVertical = new(0, 19);
+
+    /// <summary>Area a stack-over-bet pile pair can cover, relative to its centre.</summary>
+    public static Rect2 VerticalPileUnitBounds => PairBounds(StackPileOffsetVertical, BetPileOffsetVertical);
+
+    /// <summary>Area a stack-beside-bet pile pair can cover, relative to its centre.</summary>
+    public static Rect2 HorizontalPileUnitBounds => PairBounds(StackPileOffset, BetPileOffset);
+
+    private static Rect2 PairBounds(Vector2 stackOffset, Vector2 betOffset)
+    {
+        var stack = ChipPileView.BoundsFor(showLabel: false);
+        var bet = ChipPileView.BoundsFor(showLabel: true);
+        return new Rect2(stack.Position + stackOffset, stack.Size).Merge(new Rect2(bet.Position + betOffset, bet.Size));
+    }
 
     private PokerTable _table = null!;
+    private PortraitLayout _layout = null!;
     private readonly Texture2D _worldMap = GD.Load<Texture2D>(UiTheme.WorldMapPath);
     private readonly List<SeatView> _seats = new();
     private readonly List<ChipPileView> _stackPiles = new();
@@ -26,9 +39,7 @@ public partial class TableScene : Control
     private readonly List<CardView> _community = new();
     private readonly HashSet<PokerPlayer> _winners = new();
     private readonly HashSet<Card> _winningCards = new();
-    private readonly Queue<string> _log = new();
     private Label _potLabel = null!;
-    private Label _logLabel = null!;
     private Panel _actionBar = null!;
     private Button _foldButton = null!;
     private Button _callButton = null!;
@@ -61,74 +72,84 @@ public partial class TableScene : Control
 
     public override void _Draw()
     {
-        DrawTextureRect(_worldMap, new Rect2(Vector2.Zero, Size), false);
-        DrawColoredPolygon(Ellipse(FeltCenter, FeltRadii + new Vector2(8, 8)), new Color("5a3a22"));
-        DrawColoredPolygon(Ellipse(FeltCenter, FeltRadii), new Color("1f6b3a"));
-        DrawColoredPolygon(Ellipse(FeltCenter, FeltRadii - new Vector2(14, 14)), new Color("247a43"));
+        UiTheme.DrawWorldMap(this, _worldMap, Size);
+        // A long table between the two NPC columns: wooden rail, felt, lighter inner felt.
+        var table = _layout.Table;
+        DrawColoredPolygon(Chamfered(table, 6), new Color("5a3a22"));
+        DrawColoredPolygon(Chamfered(table.Grow(-3), 5), new Color("1f6b3a"));
+        DrawColoredPolygon(Chamfered(table.Grow(-9), 4), new Color("247a43"));
     }
 
-    private static Vector2[] Ellipse(Vector2 center, Vector2 radii, int points = 64) =>
-        Enumerable.Range(0, points)
-            .Select(i => center + new Vector2(Mathf.Cos(Mathf.Tau * i / points), Mathf.Sin(Mathf.Tau * i / points)) * radii)
-            .ToArray();
+    /// <summary>Rectangle with its corners cut at 45 degrees: reads as "rounded" at pixel scale.</summary>
+    private static Vector2[] Chamfered(Rect2 r, float c) => new[]
+    {
+        new Vector2(r.Position.X + c, r.Position.Y), new Vector2(r.End.X - c, r.Position.Y),
+        new Vector2(r.End.X, r.Position.Y + c), new Vector2(r.End.X, r.End.Y - c),
+        new Vector2(r.End.X - c, r.End.Y), new Vector2(r.Position.X + c, r.End.Y),
+        new Vector2(r.Position.X, r.End.Y - c), new Vector2(r.Position.X, r.Position.Y + c),
+    };
 
     // --- UI construction ---------------------------------------------------
 
     private void BuildUi()
     {
-        // Seats go clockwise starting at the bottom (the human).
+        var (safeTop, safeBottom) = PortraitLayout.SafeInsets(GetViewport());
+        _layout = new PortraitLayout(GetViewportRect().Size, _table.Players.Count - 1, safeTop, safeBottom);
+        var potCenter = _layout.PotCenter;
+
+        // Players[0] is the human (bottom right); opponents fill the edge columns clockwise.
         var humanPortrait = GD.Load<Texture2D>(GameConfig.Instance.PlayerPortraitPath);
-        int n = _table.Players.Count;
-        for (int i = 0; i < n; i++)
+        for (int i = 0; i < _table.Players.Count; i++)
         {
-            float angle = Mathf.Pi / 2 + Mathf.Tau * i / n;
-            var center = FeltCenter + new Vector2(Mathf.Cos(angle), Mathf.Sin(angle)) * SeatRadii;
             var player = _table.Players[i];
+            var slot = i == 0 ? _layout.Human : _layout.Opponents[i - 1];
             var seat = new SeatView
             {
                 Player = player,
                 Portrait = player.Brain?.Portrait ?? humanPortrait,
-                Position = (center - SeatView.SeatSize / 2).Round(),
+                Style = slot.Style,
+                Position = slot.SeatPosition.Round(),
             };
             AddChild(seat);
             _seats.Add(seat);
 
-            // Stack (whole bankroll) on the left, this hand's bet on the right.
-            var unit = PileUnitPosition(seat);
-            var stack = new ChipPileView { Position = unit + StackPileOffset, ShowLabel = false };
+            // Stack (whole bankroll) left/above, this hand's bet right/below.
+            var stack = new ChipPileView
+            {
+                Position = slot.PileCenter + (slot.VerticalPiles ? StackPileOffsetVertical : StackPileOffset),
+                ShowLabel = false,
+            };
             AddChild(stack);
             _stackPiles.Add(stack);
-            var bet = new ChipPileView { Position = unit + BetPileOffset };
+            var bet = new ChipPileView { Position = slot.PileCenter + (slot.VerticalPiles ? BetPileOffsetVertical : BetPileOffset) };
             AddChild(bet);
             _betPiles.Add(bet);
         }
 
-        float rowWidth = 5 * CardView.CardSize.X + 4 * 4;
+        // The board, drawn large in the space under the NPCs.
+        float step = CardView.CardSize.X * PortraitLayout.BoardCardScale + PortraitLayout.BoardCardGap;
         for (int i = 0; i < 5; i++)
         {
             var view = new CardView
             {
                 ShowEmptySlot = true,
-                Position = new Vector2(FeltCenter.X - rowWidth / 2 + i * (CardView.CardSize.X + 4), FeltCenter.Y - 24).Round(),
+                PixelScale = PortraitLayout.BoardCardScale,
+                Position = _layout.BoardOrigin + new Vector2(i * step, 0),
             };
             AddChild(view);
             _community.Add(view);
         }
 
         _potLabel = this.AddAt(new Label { HorizontalAlignment = HorizontalAlignment.Center },
-            new Vector2(FeltCenter.X - 60, FeltCenter.Y + 16), new Vector2(120, 12));
+            potCenter - new Vector2(60, UiTheme.LineHeight / 2), new Vector2(120, UiTheme.LineHeight));
         _potLabel.AddThemeColorOverride("font_color", PixelArt.Gold);
 
-        var logPanel = this.AddAt(new Panel(), new Vector2(4, 318), new Vector2(232, 38));
-        _logLabel = logPanel.AddAt(new Label(), new Vector2(4, 0), new Vector2(224, 38));
-        _logLabel.AddThemeConstantOverride("line_spacing", -2);
-
-        var menuButton = this.AddAt(new Button { Text = "MENU" }, new Vector2(4, 4), new Vector2(40, 18));
+        var menuButton = this.AddAt(new Button { Text = "MENU" }, _layout.MenuButton.Position, _layout.MenuButton.Size);
         menuButton.Pressed += () => GetTree().ChangeSceneToFile("res://scenes/main_menu.tscn");
 
         // Shown under the board, in the (then empty) pot label's spot, once a hand is over.
         _nextHandButton = this.AddAt(new Button { Text = "NEXT HAND", Visible = false },
-            new Vector2(FeltCenter.X - 50, FeltCenter.Y + 16), new Vector2(100, 22));
+            potCenter - PortraitLayout.NextHandSize / 2, PortraitLayout.NextHandSize);
         _nextHandButton.Pressed += () =>
         {
             _nextHandButton.Visible = false;
@@ -138,51 +159,36 @@ public partial class TableScene : Control
         BuildActionBar();
     }
 
-    /// <summary>
-    /// Centre of a seat's pair of chip piles: slides from the seat toward the table centre
-    /// until the pair no longer overlaps the seat.
-    /// </summary>
-    private static Vector2 PileUnitPosition(SeatView seat)
-    {
-        var bounds = PileUnitBounds;
-        var seatRect = new Rect2(seat.Position, SeatView.SeatSize).Grow(3);
-        var start = seat.Position + SeatView.SeatSize / 2;
-        for (float t = 0; t < 1; t += 0.01f)
-        {
-            var p = start.Lerp(FeltCenter, t).Round();
-            if (!seatRect.Intersects(new Rect2(p + bounds.Position, bounds.Size)))
-                return p;
-        }
-        return FeltCenter;
-    }
-
-    private static Rect2 PileUnitBounds
-    {
-        get
-        {
-            var b = ChipPileView.Bounds;
-            var stack = new Rect2(b.Position + StackPileOffset, b.Size);
-            return stack.Merge(new Rect2(b.Position + BetPileOffset, b.Size));
-        }
-    }
-
     private void BuildActionBar()
     {
-        _actionBar = this.AddAt(new Panel { Visible = false }, new Vector2(392, 316), new Vector2(244, 40));
+        // A column of big, well-spaced touch targets beside the human's seat:
+        // FOLD, CALL, raise amount, RAISE.
+        var bar = _layout.ActionBar;
+        _actionBar = this.AddAt(new Panel { Visible = false }, bar.Position, bar.Size);
+        float pad = PortraitLayout.ActionPadding, gap = PortraitLayout.ActionGap;
+        float buttonH = PortraitLayout.ActionButtonHeight, sliderH = PortraitLayout.ActionSliderHeight;
+        float inner = bar.Size.X - pad * 2;
 
-        _raiseSlider = _actionBar.AddAt(new HSlider { Step = 1 }, new Vector2(4, 3), new Vector2(160, 12));
+        float y = pad;
+        _foldButton = ActionButton("FOLD", y, () => Submit(new Decision(PokerAction.Fold)));
+        y += buttonH + gap;
+        _callButton = ActionButton("CALL", y, () => Submit(new Decision(_toCall == 0 ? PokerAction.Check : PokerAction.Call)));
+        y += buttonH + gap;
+
+        _raiseSlider = _actionBar.AddAt(new HSlider { Step = 1 }, new Vector2(pad, y), new Vector2(inner - 78, sliderH));
         _raiseSlider.ValueChanged += _ => UpdateRaiseLabel();
-        _raiseLabel = _actionBar.AddAt(new Label { HorizontalAlignment = HorizontalAlignment.Right },
-            new Vector2(168, 1), new Vector2(72, 12));
+        _raiseLabel = _actionBar.AddAt(new Label { HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Center },
+            new Vector2(pad + inner - 74, y), new Vector2(74, sliderH));
+        y += sliderH + gap;
 
-        _foldButton = ActionButton("FOLD", 4, () => Submit(new Decision(PokerAction.Fold)));
-        _callButton = ActionButton("CALL", 84, () => Submit(new Decision(_toCall == 0 ? PokerAction.Check : PokerAction.Call)));
-        _raiseButton = ActionButton("RAISE", 164, () => Submit(new Decision(PokerAction.Raise, (int)_raiseSlider.Value)));
+        _raiseButton = ActionButton("RAISE", y, () => Submit(new Decision(PokerAction.Raise, (int)_raiseSlider.Value)));
     }
 
-    private Button ActionButton(string text, float x, Action onPressed)
+    private Button ActionButton(string text, float y, Action onPressed)
     {
-        var button = _actionBar.AddAt(new Button { Text = text }, new Vector2(x, 17), new Vector2(76, 20));
+        float pad = PortraitLayout.ActionPadding;
+        var button = _actionBar.AddAt(new Button { Text = text },
+            new Vector2(pad, y), new Vector2(_layout.ActionBar.Size.X - pad * 2, PortraitLayout.ActionButtonHeight));
         button.Pressed += onPressed;
         return button;
     }
@@ -232,10 +238,8 @@ public partial class TableScene : Control
 
     private void ConnectTable()
     {
-        _table.Message += AddLog;
         _table.HandStarted += (number, dealer) =>
         {
-            AddLog($"-- HAND {number} --");
             foreach (var seat in _seats)
             {
                 seat.SetDealer(seat.Player.Seat == dealer);
@@ -250,7 +254,6 @@ public partial class TableScene : Control
         _table.StreetStarted += street =>
         {
             if (street == Street.Preflop) return;
-            AddLog(PokerText.StreetName(street));
             foreach (var seat in _seats.Where(s => s.Player.InHand && !s.Player.AllIn))
                 seat.SetStatus("");
         };
@@ -277,7 +280,6 @@ public partial class TableScene : Control
             if (player.AllIn && action != PokerAction.Fold) text = "ALL IN";
             _seats[player.Seat].SetStatus(text);
             _seats[player.Seat].SetActive(false);
-            AddLog($"{player.DisplayName}: {text.ToLower()}");
         };
         _table.ChipsChanged += RefreshSeats;
         _table.Showdown += (contenders, scores) =>
@@ -296,9 +298,6 @@ public partial class TableScene : Control
             if (handName != "")
                 _winningCards.UnionWith(HandEvaluator.BestFive(player.HoleCards.Concat(_table.Community).ToList()));
             ApplyWinHighlights();
-            AddLog(handName == ""
-                ? $"{player.DisplayName} wins ${amount}"
-                : $"{player.DisplayName} wins ${amount} ({handName})");
         };
         _table.WaitingForNextHand += () =>
         {
@@ -337,13 +336,6 @@ public partial class TableScene : Control
         _potLabel.Text = _table.Pot > 0 ? $"POT ${_table.Pot}" : "";
     }
 
-    private void AddLog(string line)
-    {
-        _log.Enqueue(line);
-        while (_log.Count > LogLines) _log.Dequeue();
-        _logLabel.Text = string.Join("\n", _log);
-    }
-
     private void ShowGameOver(PokerPlayer winner)
     {
         _actionBar.Visible = false;
@@ -361,7 +353,7 @@ public partial class TableScene : Control
             Text = winner.IsHuman ? "YOU WIN!" : "BUSTED!",
             HorizontalAlignment = HorizontalAlignment.Center,
         };
-        title.AddThemeFontSizeOverride("font_size", 24);
+        title.AddThemeFontSizeOverride("font_size", 32);
         title.AddThemeColorOverride("font_color", PixelArt.Gold);
         box.AddChild(title);
         box.AddChild(new Label
