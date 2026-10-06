@@ -47,6 +47,9 @@ public partial class TableScene : Control
     private HSlider _raiseSlider = null!;
     private Label _raiseLabel = null!;
     private Button _nextHandButton = null!;
+    private PistolView _pistol = null!;
+    private Label _targetHint = null!;
+    private bool _targeting;
     private int _toCall;
 
     public override void _Ready()
@@ -112,6 +115,7 @@ public partial class TableScene : Control
                 Position = slot.SeatPosition.Round(),
             };
             AddChild(seat);
+            seat.Targeted += OnSeatTargeted;
             _seats.Add(seat);
 
             // Stack (whole bankroll) left/above, this hand's bet right/below.
@@ -156,6 +160,23 @@ public partial class TableScene : Control
             _nextHandButton.Visible = false;
             _table.ContinueToNextHand();
         };
+
+        // Target mode (after the human wins a hand): pistol in the screen centre, hint under the board.
+        _pistol = new PistolView
+        {
+            Visible = false,
+            // Floats in the centre of the screen.
+            Position = (GetViewportRect().Size / 2 - PistolView.ArtSize / 2).Round(),
+        };
+        AddChild(_pistol);
+        _targetHint = this.AddAt(new Label
+        {
+            Text = "PICK A TARGET",
+            HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Center,
+            Visible = false,
+        }, potCenter - PortraitLayout.NextHandSize / 2, PortraitLayout.NextHandSize);
+        _targetHint.AddThemeColorOverride("font_color", PixelArt.HeartRed);
 
         BuildActionBar();
     }
@@ -303,10 +324,52 @@ public partial class TableScene : Control
         _table.WaitingForNextHand += () =>
         {
             foreach (var seat in _seats) seat.SetActive(false);
-            _nextHandButton.Visible = true;
-            _nextHandButton.GrabFocus(); // Enter / Space also continue
+            // Winning a hand earns a shot at an NPC; otherwise just wait for NEXT HAND.
+            var targets = _seats.Where(s => !s.Player.IsHuman && s.Player.Hearts > 0 && s.Player.Chips > 0).ToList();
+            bool earnedShot = _winners.Contains(_table.Players[0]) || GameConfig.Instance.DebugTargetEveryHand;
+            if (earnedShot && targets.Count > 0)
+            {
+                EnterTargetMode(targets);
+            }
+            else
+            {
+                _nextHandButton.Visible = true;
+                _nextHandButton.GrabFocus(); // Enter / Space also continue
+            }
         };
         _table.GameOver += ShowGameOver;
+    }
+
+    private void EnterTargetMode(List<SeatView> targets)
+    {
+        _targeting = true;
+        _pistol.Visible = true;
+        _pistol.SetProcess(true);
+        _targetHint.Visible = true;
+        foreach (var seat in targets) seat.SetTargetable(true);
+    }
+
+    /// <summary>The human picked an NPC: fire, take a heart, then deal the next hand.</summary>
+    private void OnSeatTargeted(SeatView target)
+    {
+        if (!_targeting) return;
+        _targeting = false;
+        foreach (var seat in _seats) seat.SetTargetable(false);
+        _targetHint.Visible = false;
+
+        _pistol.Fire();
+        target.FlashHit();
+        bool eliminated = _table.RemoveHeart(target.Player, _table.Players[0]);
+        target.SetStatus(eliminated ? "ELIMINATED" : "DIRECT HIT", PixelArt.HeartRed);
+        target.Refresh();
+
+        GetTree().CreateTimer(0.9).Timeout += () =>
+        {
+            if (!IsInstanceValid(this)) return; // left the scene meanwhile
+            _pistol.Visible = false;
+            _pistol.SetProcess(false);
+            _table.ContinueToNextHand();
+        };
     }
 
     /// <summary>Hand name short enough for a seat's status line (poker shorthand for the long ones).</summary>

@@ -31,9 +31,24 @@ public partial class SimTest : Node
         Expect("2c 5d 9h Jh Kh Ad 3s", HandCategory.HighCard, 14, 13, 11, 9, 5);
         Check(HandEvaluator.Compare(Score("Ah Kd 2c 3c 4d 8h 9s"), Score("Ac Kh 2d 3s 4h 8d 9c")) == 0, "split pot tie");
         Check(HandEvaluator.Compare(Score("Ah Ad Kc 7s 2d 3h 4s"), Score("Ah Ad Qc 7s 2d 3h 4s")) > 0, "pair kicker");
+        TestRemoveHeart();
         ExpectBestFive("Ah Kd 7c 7s 2d 3h Ac", "Ah Ac 7c 7s Kd");
         ExpectBestFive("2h 3h 4h 5h 7h 6d 8c", "7h 5h 4h 3h 2h");
         ExpectBestFive("Ah 2d 3c 4s 5h Kd Kc", "Ah 2d 3c 4s 5h");
+    }
+
+    private void TestRemoveHeart()
+    {
+        var table = new PokerTable();
+        var you = new PokerPlayer("YOU", 1000);
+        var npc = new PokerPlayer("NPC", 400, new NpcBrain());
+        table.Setup(new[] { you, npc });
+        Check(!table.RemoveHeart(npc, you) && npc.Hearts == 2 && npc.Chips == 400, "first shot only takes a heart");
+        Check(!table.RemoveHeart(npc, you) && npc.Hearts == 1, "second shot only takes a heart");
+        Check(table.RemoveHeart(npc, you) && npc.Hearts == 0, "third shot eliminates");
+        Check(npc.Chips == 0 && you.Chips == 1400, "eliminated player's chips go to the shooter");
+        Check(!table.RemoveHeart(npc, you) && npc.Hearts == 0, "no hearts below zero");
+        table.Free();
     }
 
     private void RunSimulation()

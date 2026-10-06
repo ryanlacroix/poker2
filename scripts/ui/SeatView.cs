@@ -45,6 +45,12 @@ public partial class SeatView : Control
     private bool _isActive;
     private bool _reveal;
     private bool _isWinner;
+    private bool _isTarget;
+    private double _hitAt = -1;
+    private const double HitSeconds = 0.6;
+
+    /// <summary>Raised when the human taps this seat while it is targetable.</summary>
+    public event System.Action<SeatView>? Targeted;
 
     public override void _Ready()
     {
@@ -124,8 +130,39 @@ public partial class SeatView : Control
     public void SetWinner(bool value)
     {
         _isWinner = value;
-        SetProcess(value);
+        UpdateProcessing();
         QueueRedraw();
+    }
+
+    /// <summary>Target mode: the portrait pulses red and the seat accepts a tap.</summary>
+    public void SetTargetable(bool value)
+    {
+        _isTarget = value;
+        MouseFilter = value ? MouseFilterEnum.Stop : MouseFilterEnum.Ignore;
+        MouseDefaultCursorShape = CursorShape.PointingHand;
+        UpdateProcessing();
+        QueueRedraw();
+    }
+
+    /// <summary>Brief red flash on the portrait after being shot.</summary>
+    public void FlashHit()
+    {
+        _hitAt = Time.GetTicksMsec() / 1000.0;
+        UpdateProcessing();
+    }
+
+    private bool HitActive => _hitAt >= 0 && Time.GetTicksMsec() / 1000.0 - _hitAt < HitSeconds;
+
+    // Only redraw every frame while something is animating.
+    private void UpdateProcessing() => SetProcess(_isWinner || _isTarget || HitActive);
+
+    public override void _GuiInput(InputEvent @event)
+    {
+        if (_isTarget && @event is InputEventMouseButton { Pressed: true, ButtonIndex: MouseButton.Left })
+        {
+            AcceptEvent();
+            Targeted?.Invoke(this);
+        }
     }
 
     /// <summary>Highlight hole cards in <paramref name="winning"/> and dim the rest; null clears.</summary>
@@ -139,7 +176,11 @@ public partial class SeatView : Control
         }
     }
 
-    public override void _Process(double delta) => QueueRedraw(); // animates the winner glow
+    public override void _Process(double delta)
+    {
+        QueueRedraw(); // animates the winner / target glow and the hit flash
+        if (!_isWinner && !_isTarget && !HitActive) SetProcess(false);
+    }
 
     public override void _Draw()
     {
@@ -155,10 +196,20 @@ public partial class SeatView : Control
             {
                 DrawWinnerGlow(frame);
             }
+            else if (_isTarget)
+            {
+                DrawTargetGlow(frame);
+            }
             else
             {
                 DrawRect(frame.Grow(1), dimmed ? PixelArt.Ink : PixelArt.Paper, false, 1);
                 DrawTextureRect(Portrait, frame, false, dimmed ? new Color(0.45f, 0.45f, 0.5f) : Colors.White);
+            }
+            if (HitActive)
+            {
+                float k = 1f - (float)((Time.GetTicksMsec() / 1000.0 - _hitAt) / HitSeconds);
+                bool blink = (int)(Time.GetTicksMsec() / 80) % 2 == 0;
+                DrawRect(frame, new Color(blink ? Colors.White : PixelArt.HeartRed, 0.65f * k));
             }
         }
         DrawHearts();
@@ -197,6 +248,21 @@ public partial class SeatView : Control
             if (full)
                 DrawRect(new Rect2(origin + new Vector2(px, px), new Vector2(px, px)), new Color(1, 1, 1, 0.7f)); // shine
         }
+    }
+
+    /// <summary>Red pulsing halo and tint for a seat that can be targeted, plus a red seat outline.</summary>
+    private void DrawTargetGlow(Rect2 frame)
+    {
+        float t = Time.GetTicksMsec() / 1000f;
+        float pulse = 0.55f + 0.45f * Mathf.Sin(t * 6f);
+        var red = PixelArt.HeartRed;
+        DrawRect(new Rect2(-2, -2, SeatSize + new Vector2(4, 4)), new Color(red, 0.5f + 0.5f * pulse), false, 1);
+        DrawRect(frame.Grow(4), new Color(red, 0.3f * pulse), false, 1);
+        DrawRect(frame.Grow(3), new Color(red, 0.6f * pulse), false, 1);
+        DrawRect(frame.Grow(2), new Color("ff8a8a"), false, 1);
+        DrawRect(frame.Grow(1), red, false, 1);
+        DrawTextureRect(Portrait!, frame, false, Colors.White.Lerp(new Color("ff9090"), 0.55f * pulse));
+        DrawRect(frame, new Color(red, 0.22f * pulse));
     }
 
     /// <summary>Gold frame with pulsing halo rings, a warm tint and twinkling corner sparkles.</summary>

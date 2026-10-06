@@ -72,6 +72,24 @@ public partial class PokerTable : Node
 	/// <summary>Called by the UI to deal the next hand while paused (see <see cref="WaitForNextHand"/>).</summary>
 	public void ContinueToNextHand() => _nextHand?.TrySetResult();
 
+	/// <summary>
+	/// Takes one heart from <paramref name="target"/> (call between hands). At zero hearts the
+	/// target is eliminated and their chips go to <paramref name="taker"/>. Returns true if eliminated.
+	/// </summary>
+	public bool RemoveHeart(PokerPlayer target, PokerPlayer taker)
+	{
+		if (target.Hearts <= 0) return false;
+		target.Hearts--;
+		bool eliminated = target.Hearts == 0;
+		if (eliminated && target != taker)
+		{
+			taker.Chips += target.Chips;
+			target.Chips = 0;
+		}
+		ChipsChanged?.Invoke();
+		return eliminated;
+	}
+
 	public override void _ExitTree()
 	{
 		// Stops the game loop cleanly if the scene is left mid-hand.

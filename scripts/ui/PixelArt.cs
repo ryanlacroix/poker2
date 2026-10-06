@@ -49,11 +49,69 @@ public static class PixelArt
         ['9'] = new[] { "XXX", "X.X", "XXX", "..X", "XXX" },
     };
 
+    // Side-view pistol pointing right (28x16): K outline, L/G/g slide steel, D frame, B/b wooden grip.
+    public static readonly string[] Pistol =
+    {
+        "............................",
+        "...KKKKKKKKKKKKKKKKKKKKKKK..",
+        "...KLLLLLLLLLLLLLLLLLLLLLKK.",
+        "...KGGGGGGGGGGGGKKKKGGGGGGKK",
+        "...KGgGgGgGGGGGGKggKGGGGGGGK",
+        "...KGgGgGgGGGGGGKKKKGGGGGGKK",
+        "...KgggggggggggggggggggggKK.",
+        "...KKKKKKKKKKKKKKKKKKKKKKK..",
+        "....KDDDDDDKDDDDDDDDDDDK....",
+        "...KBBBBBBKKKKKKKKKKKKK.....",
+        "...KBbBBBBK..K...K..........",
+        "..KBBBBbBBK..K..K...........",
+        "..KBbBBBBBK...KK............",
+        ".KBBBBBbBK..................",
+        ".KBbBBBBBK..................",
+        ".KKKKKKKKK..................",
+    };
+
+    public static readonly Dictionary<char, Color> PistolColors = new()
+    {
+        ['K'] = Ink,
+        ['L'] = new Color("f0f4fa"),
+        ['G'] = new Color("aab4c4"),
+        ['g'] = new Color("6e7888"),
+        ['B'] = new Color("a8642e"),
+        ['b'] = new Color("6a3c1c"),
+        ['D'] = new Color("5a6478"),
+    };
+
+    public static readonly string[] MuzzleFlash =
+    {
+        "..Y.Y..",
+        "...O...",
+        "YOOWOOY",
+        "...O...",
+        "..Y.Y..",
+    };
+
+    public static readonly Dictionary<char, Color> FlashColors = new()
+    {
+        ['Y'] = Gold,
+        ['O'] = new Color("ff8a30"),
+        ['W'] = new Color("fff6d0"),
+    };
+
+    /// <summary>Draws a multi-colour pattern; characters missing from <paramref name="colors"/> are transparent.</summary>
+    public static void DrawColored(CanvasItem canvas, string[] pattern, IReadOnlyDictionary<char, Color> colors, Vector2 origin, int px)
+    {
+        for (int y = 0; y < pattern.Length; y++)
+            for (int x = 0; x < pattern[y].Length; x++)
+                if (colors.TryGetValue(pattern[y][x], out var color))
+                    canvas.DrawRect(new Rect2(origin + new Vector2(x, y) * px, new Vector2(px, px)), color);
+    }
+
+    /// <summary>Fills every non-'.' cell of <paramref name="pattern"/> with one colour (a glyph or a silhouette).</summary>
     public static void Draw(CanvasItem canvas, string[] pattern, Vector2 origin, int px, Color color)
     {
         for (int y = 0; y < pattern.Length; y++)
             for (int x = 0; x < pattern[y].Length; x++)
-                if (pattern[y][x] == 'X')
+                if (pattern[y][x] != '.')
                     canvas.DrawRect(new Rect2(origin + new Vector2(x, y) * px, new Vector2(px, px)), color);
     }
 

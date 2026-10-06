@@ -29,7 +29,11 @@ tests/               headless smoke test
 
 ## Hearts
 
-Every player starts with 3 hearts (`GameConfig.StartingHearts`), shown as pixel hearts under their name (lost hearts would show as empty outlines). Nothing removes hearts yet. Running out of chips knocks a player out, as before.
+Every player starts with 3 hearts (`GameConfig.StartingHearts`), shown as pixel hearts under their name (lost hearts would show as empty outlines). Running out of chips knocks a player out, as before.
+
+**Target mode:** when you win a hand, a pixel pistol appears over the board and every NPC still in the game glows red. Tap one to take a heart from them; then the next hand is dealt. An NPC who loses their last heart is eliminated, and their chips go to you.
+
+> **Testing flag:** `GameConfig.DebugTargetEveryHand` is currently `true`, so target mode runs after *every* hand. Set it to `false` to restore the real rule.
 
 ## Portrait layout and Android
 
