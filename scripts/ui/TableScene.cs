@@ -173,7 +173,7 @@ public partial class TableScene : Control
             _nextHandButton.Visible = false;
             _itemPhase = false;
             HideItemButtons();
-            _table.ContinueToNextHand();
+            ClearTableThenContinue();
         };
 
         // Target mode (after the human uses a pistol): pistol in the screen centre, hint under the board.
@@ -525,6 +525,18 @@ public partial class TableScene : Control
             if (!IsInstanceValid(this)) return; // left the scene meanwhile
             _pistol.Visible = false;
             _pistol.SetProcess(false);
+            ClearTableThenContinue();
+        };
+    }
+
+    /// <summary>End of the hand: every card on the table fades out, then the next hand is dealt.</summary>
+    private void ClearTableThenContinue()
+    {
+        foreach (var seat in _seats) seat.FadeOutCards();
+        foreach (var view in _community) view.FadeOut();
+        GetTree().CreateTimer(CardView.FadeSeconds).Timeout += () =>
+        {
+            if (!IsInstanceValid(this)) return; // left the scene meanwhile
             _table.ContinueToNextHand();
         };
     }

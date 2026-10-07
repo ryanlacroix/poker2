@@ -175,6 +175,11 @@ public partial class SeatView : Control
         }
     }
 
+    public void FadeOutCards()
+    {
+        foreach (var view in _cards) view.FadeOut();
+    }
+
     /// <summary>Sets each hole card's highlight from <paramref name="highlightFor"/>.</summary>
     public void HighlightCards(System.Func<Card?, CardHighlight> highlightFor)
     {
