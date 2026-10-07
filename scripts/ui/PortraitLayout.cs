@@ -54,7 +54,7 @@ public sealed class PortraitLayout
     public Vector2 PotCenter { get; }
     public SeatSlot[] Opponents { get; }
     public SeatSlot Human { get; }
-    public Rect2 MenuButton { get; }
+    public Rect2 DebugButton { get; }
     public Rect2 ActionBar { get; }
 
     public PortraitLayout(Vector2 viewport, int opponentCount, float safeTop = 0, float safeBottom = 0)
@@ -64,7 +64,7 @@ public sealed class PortraitLayout
 
         var compact = SeatView.CompactSize;
         var wide = SeatView.WideSize;
-        float top = safeTop + 2; // the MENU button sits between the columns, not above them
+        float top = safeTop + 2; // the DEBUG button sits between the columns, not above them
         float[] rowY = { top, top + compact.Y + RowGap, top + (compact.Y + RowGap) * 2 };
         float npcBottom = rowY[2] + compact.Y;
 
@@ -108,8 +108,8 @@ public sealed class PortraitLayout
         BoardOrigin = new Vector2(Mathf.Floor((viewport.X - boardWidth) / 2), boardY);
         PotCenter = new Vector2(Mathf.Floor(viewport.X / 2), boardY + card.Y + 6 + NextHandSize.Y / 2);
 
-        // MENU: top centre, in the gap between the two columns of chip piles.
-        MenuButton = new Rect2(Mathf.Floor(viewport.X / 2) - 24, top, 48, 26);
+        // DEBUG: top centre, in the gap between the two columns of chip piles.
+        DebugButton = new Rect2(Mathf.Floor(viewport.X / 2) - 26, top, 52, 26);
     }
 
     /// <summary>Safe-area insets (top, bottom) in viewport units; zero except on phones.</summary>

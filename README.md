@@ -46,7 +46,7 @@ The base resolution is 360x640 (portrait), locked to portrait orientation. `Port
 - NPCs are stacked closely at the top, 3 down each screen edge (6 in total). Each seat has a 48px portrait beside its cards, with the chip piles (drawn at 2x) on the table next to it.
 - The board sits in the space below them, drawn at 2x size.
 - Your seat (48px portrait, 2x cards) is pinned to the bottom-right corner, and your chips sit on the table's near edge above it.
-- A column of big, well-spaced FOLD / CALL / raise-slider / RAISE buttons sits to the left of your seat (sizes in `PortraitLayout`). MENU is at the top centre.
+- A column of big, well-spaced FOLD / CALL / raise-slider / RAISE buttons sits to the left of your seat (sizes in `PortraitLayout`). DEBUG is at the top centre: it opens a popup of testing actions (GIVE GUN / GIVE SHIELD, which replace your current item and make it ready to use at once).
 - On taller phones (for example 1080x2400, which gives 360x800) the extra height goes to the board area. Wider screens widen the table.
 - On phones, safe-area insets keep the UI clear of notches and gesture bars.
 

@@ -54,6 +54,8 @@ public partial class TableScene : Control
     private Button _nextHandButton = null!;
     private Button _useItemButton = null!;
     private Button _dropItemButton = null!;
+    private bool _itemPhase; // the hand is settled and the human may use or drop their item
+    private DebugMenu _debugMenu = null!;
     private PistolView _pistol = null!;
     private ColorRect _shotDarken = null!;
     private Tween? _shotDarkenTween;
@@ -160,8 +162,8 @@ public partial class TableScene : Control
         // Pot of gold + amount; the box is tall and centred so it grows from its middle when it pops.
         _pot = this.AddAt(new PotView { FontSize = PotFontSize }, potCenter - new Vector2(80, 20), new Vector2(160, 40));
 
-        var menuButton = this.AddAt(new Button { Text = "MENU" }, _layout.MenuButton.Position, _layout.MenuButton.Size);
-        menuButton.Pressed += () => GetTree().ChangeSceneToFile("res://scenes/main_menu.tscn");
+        var debugButton = this.AddAt(new Button { Text = "DEBUG" }, _layout.DebugButton.Position, _layout.DebugButton.Size);
+        debugButton.Pressed += () => _debugMenu.Show();
 
         // Shown under the board, in the (then empty) pot label's spot, once a hand is over.
         _nextHandButton = this.AddAt(new Button { Text = "NEXT HAND", Visible = false },
@@ -169,6 +171,7 @@ public partial class TableScene : Control
         _nextHandButton.Pressed += () =>
         {
             _nextHandButton.Visible = false;
+            _itemPhase = false;
             HideItemButtons();
             _table.ContinueToNextHand();
         };
@@ -219,6 +222,10 @@ public partial class TableScene : Control
         _notices = this.AddAt(new NoticeBanner(),
             new Vector2(0, Mathf.Floor(boardMid - NoticeBanner.StripHeight / 2)),
             new Vector2(GetViewportRect().Size.X, NoticeBanner.StripHeight));
+
+        // Added last so it takes input before anything else.
+        _debugMenu = this.AddAt(new DebugMenu(), Vector2.Zero, GetViewportRect().Size);
+        _debugMenu.GiveItem += DebugGiveItem;
     }
 
     private void BuildActionBar()
@@ -419,7 +426,14 @@ public partial class TableScene : Control
     {
         _nextHandButton.Visible = true;
         _nextHandButton.GrabFocus(); // Enter / Space also continue
+        _itemPhase = true;
+        ShowItemButtons();
+    }
 
+    /// <summary>DROP for any item the human holds; USE as well once a usable item is ready.</summary>
+    private void ShowItemButtons()
+    {
+        HideItemButtons();
         if (_table.Players[0].Item is not { } item) return;
         // Any item can be dropped, even one picked up this hand; using one has to wait a hand.
         _dropItemButton.Text = $"DROP {ItemText.Name(item)}";
@@ -450,8 +464,22 @@ public partial class TableScene : Control
     private List<SeatView> Targets() =>
         _seats.Where(s => !s.Player.IsHuman && s.Player.Hearts > 0 && s.Player.Chips > 0).ToList();
 
+    /// <summary>
+    /// Debug: hands the human <paramref name="item"/>, replacing whatever they carry. It counts as
+    /// picked up a hand ago, so it can be used at the end of this hand (or right now, between hands).
+    /// </summary>
+    private void DebugGiveItem(Item item)
+    {
+        var human = _table.Players[0];
+        human.Item = item;
+        human.ItemGainedOnHand = _table.HandNumber - 1;
+        _seats[0].Refresh();
+        if (_itemPhase && !_targeting) ShowItemButtons();
+    }
+
     private void UseItem()
     {
+        _itemPhase = false;
         HideItemButtons();
         switch (_table.Players[0].Item)
         {
