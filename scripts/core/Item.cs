@@ -4,7 +4,7 @@ namespace PokerGame;
 public enum Item
 {
     /// <summary>Used between hands to shoot an NPC, taking one of their hearts.</summary>
-    Pistol,
+    Gun,
     /// <summary>
     /// Protects from the moment it's picked up: the next shot breaks it instead of taking a heart.
     /// Has no use action; it can only be dropped.
@@ -18,7 +18,7 @@ public enum ShotResult { ShieldBroke, Hit, Eliminated }
 public static class Items
 {
     /// <summary>Whether <paramref name="item"/> has an action besides being dropped.</summary>
-    public static bool CanBeUsed(Item item) => item == Item.Pistol;
+    public static bool CanBeUsed(Item item) => item == Item.Gun;
 }
 
 public static class ItemText
@@ -26,7 +26,7 @@ public static class ItemText
     /// <summary>Short upper-case name, as on the "USE ..." and "DROP ..." buttons.</summary>
     public static string Name(Item item) => item switch
     {
-        Item.Pistol => "PISTOL",
+        Item.Gun => "GUN",
         Item.Shield => "SHIELD",
         _ => throw new System.ArgumentOutOfRangeException(nameof(item)),
     };
@@ -34,7 +34,7 @@ public static class ItemText
     /// <summary>The notification shown when <paramref name="name"/> picks up <paramref name="item"/>.</summary>
     public static string Gained(Item item, string name) => item switch
     {
-        Item.Pistol => $"{name} got a gun",
+        Item.Gun => $"{name} got a gun",
         Item.Shield => $"{name} GOT THE SHIELD",
         _ => throw new System.ArgumentOutOfRangeException(nameof(item)),
     };

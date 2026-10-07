@@ -78,12 +78,12 @@ public partial class PokerTable : Node
 	public void ContinueToNextHand() => _nextHand?.TrySetResult();
 
 	/// <summary>
-	/// <paramref name="shooter"/> fires their pistol (used up) at <paramref name="target"/>
+	/// <paramref name="shooter"/> fires their gun (used up) at <paramref name="target"/>
 	/// (call between hands). A shield breaks and absorbs the shot; otherwise it takes a heart.
 	/// </summary>
 	public ShotResult Shoot(PokerPlayer shooter, PokerPlayer target)
 	{
-		if (shooter.Item == Item.Pistol) shooter.Item = null;
+		if (shooter.Item == Item.Gun) shooter.Item = null;
 		if (target.Item == Item.Shield)
 		{
 			target.Item = null;

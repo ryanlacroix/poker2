@@ -2,6 +2,7 @@
 
 [ext_resource type="Script" path="res://scripts/ai/NpcBrain.cs" id="1"]
 [ext_resource type="Texture2D" path="res://assets/portraits/shark.png" id="2"]
+[ext_resource type="Texture2D" path="res://assets/portraits/shark_injured.png" id="3"]
 
 [resource]
 script = ExtResource("1")
@@ -12,3 +13,4 @@ BluffRate = 0.12
 Simulations = 1500
 Randomness = 0.03
 Portrait = ExtResource("2")
+InjuredPortrait = ExtResource("3")

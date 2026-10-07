@@ -9,9 +9,17 @@ public partial class CardView : Control
 {
     public static readonly Vector2 CardSize = new(26, 36);
 
+    // A newly placed card pops in a little large, then quickly settles to its real size.
+    private const float PopScale = 1.25f;
+    private const double PopSeconds = 0.15;
+    /// <summary>How long <see cref="FadeOut"/> takes.</summary>
+    public const double FadeSeconds = 0.2;
+
     private Card? _card;
     private bool _faceUp;
     private CardHighlight _highlight;
+    private Tween? _popTween;
+    private Tween? _fadeTween;
 
     public bool ShowEmptySlot { get; set; }
     /// <summary>Whole-number size multiplier; the pixel art is drawn scaled so it stays crisp.</summary>
@@ -27,9 +35,41 @@ public partial class CardView : Control
 
     public void SetCard(Card? card, bool faceUp)
     {
+        if (card != _card)
+        {
+            // A new card (or an empty slot) replaces any faded-out one at full opacity.
+            _fadeTween?.Kill();
+            SelfModulate = Colors.White;
+            if (card != null) PopIn();
+        }
         _card = card;
         _faceUp = faceUp;
         QueueRedraw();
+    }
+
+    /// <summary>
+    /// Quickly fades the card out (end of a hand), keeping it set until it's replaced or cleared.
+    /// Uses SelfModulate, so the seat's own Modulate (e.g. folded cards) is left alone.
+    /// </summary>
+    public void FadeOut()
+    {
+        if (_card == null || !IsInsideTree()) return;
+        _fadeTween?.Kill();
+        _fadeTween = CreateTween();
+        _fadeTween.TweenProperty(this, "self_modulate:a", 0f, FadeSeconds)
+            .SetTrans(Tween.TransitionType.Quad).SetEase(Tween.EaseType.In);
+    }
+
+    /// <summary>Starts the card at <see cref="PopScale"/> and shrinks it to its final size, from its centre.</summary>
+    private void PopIn()
+    {
+        if (!IsInsideTree()) return;
+        _popTween?.Kill();
+        PivotOffset = Size / 2;
+        Scale = Vector2.One * PopScale;
+        _popTween = CreateTween();
+        _popTween.TweenProperty(this, "scale", Vector2.One, PopSeconds)
+            .SetTrans(Tween.TransitionType.Quad).SetEase(Tween.EaseType.Out);
     }
 
     /// <summary>

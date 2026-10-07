@@ -174,6 +174,23 @@ public static class PixelArt
         ['9'] = new[] { ".XXX.", "X...X", "X...X", ".XXXX", "....X", "...X.", ".XX.." },
     };
 
+    // Dollar sign (10x12), stamped on the portrait of a player who went broke.
+    public static readonly string[] DollarSign =
+    {
+        "....XX....",
+        ".XXXXXXXX.",
+        "XXXXXXXXXX",
+        "XX..XX....",
+        "XX..XX....",
+        "XXXXXXXXX.",
+        ".XXXXXXXXX",
+        "....XX..XX",
+        "....XX..XX",
+        "XXXXXXXXXX",
+        ".XXXXXXXX.",
+        "....XX....",
+    };
+
     public static readonly string[] Heart = { ".XX.XX.", "XXXXXXX", "XXXXXXX", ".XXXXX.", "..XXX..", "...X..." };
     public static readonly Color HeartRed = new("e03848");
     public static readonly Color HeartEmpty = new("3a3448");
@@ -198,8 +215,8 @@ public static class PixelArt
         ['9'] = new[] { "XXX", "X.X", "XXX", "..X", "XXX" },
     };
 
-    // Side-view pistol pointing right (28x16): K outline, L/G/g slide steel, D frame, B/b wooden grip.
-    public static readonly string[] Pistol =
+    // Side-view gun pointing right (28x16): K outline, L/G/g slide steel, D frame, B/b wooden grip.
+    public static readonly string[] Gun =
     {
         "............................",
         "...KKKKKKKKKKKKKKKKKKKKKKK..",
@@ -219,7 +236,7 @@ public static class PixelArt
         ".KKKKKKKKK..................",
     };
 
-    public static readonly Dictionary<char, Color> PistolColors = new()
+    public static readonly Dictionary<char, Color> GunColors = new()
     {
         ['K'] = Ink,
         ['L'] = new Color("f0f4fa"),
@@ -230,8 +247,8 @@ public static class PixelArt
         ['D'] = new Color("5a6478"),
     };
 
-    // Small pistol item icon (15x12), coloured with PistolColors.
-    public static readonly string[] PistolIcon =
+    // Small gun item icon (15x12), coloured with GunColors.
+    public static readonly string[] GunIcon =
     {
         "KKKKKKKKKKKKKKK",
         "KLLLLLLLLLLLLLK",
