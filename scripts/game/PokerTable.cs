@@ -22,6 +22,8 @@ public partial class PokerTable : Node
 	public event Action? ChipsChanged;
 	public event Action<IReadOnlyList<PokerPlayer>, IReadOnlyDictionary<PokerPlayer, int[]>>? Showdown;
 	public event Action<PokerPlayer, int, string>? PotAwarded;  // winner, amount, hand name ("" if uncontested)
+	/// <summary>A player picked up an item at the end of a hand.</summary>
+	public event Action<PokerPlayer, Item>? ItemGained;
 	public event Action? HandFinished;
 	/// <summary>Raised between hands when <see cref="WaitForNextHand"/> is on; call <see cref="ContinueToNextHand"/>.</summary>
 	public event Action? WaitingForNextHand;
@@ -41,6 +43,8 @@ public partial class PokerTable : Node
 	/// waiting ShowdownDelay + BetweenHandsDelay.
 	/// </summary>
 	public bool WaitForNextHand { get; set; }
+	/// <summary>Chance, at the end of each hand, that each empty-handed player still in the game gets a random item.</summary>
+	public double ItemChance { get; set; } = 1.0 / 6;
 
 	public List<PokerPlayer> Players { get; } = new();
 	public List<Card> Community { get; } = new();
@@ -178,6 +182,7 @@ public partial class PokerTable : Node
 		}
 
 		await ResolveHand();
+		HandOutItems();
 		HandFinished?.Invoke();
 	}
 
@@ -340,6 +345,18 @@ public partial class PokerTable : Node
 		ClearBets();
 		if (!WaitForNextHand)
 			await Wait(ShowdownDelay);
+	}
+
+	/// <summary>End of hand: each player still in the game with free hands may pick up a random item.</summary>
+	private void HandOutItems()
+	{
+		var items = Enum.GetValues<Item>();
+		foreach (var p in Players)
+		{
+			if (p.Chips <= 0 || p.Item != null || Random.Shared.NextDouble() >= ItemChance) continue;
+			p.Item = items[Random.Shared.Next(items.Length)];
+			ItemGained?.Invoke(p, p.Item.Value);
+		}
 	}
 
 	private void ClearBets()

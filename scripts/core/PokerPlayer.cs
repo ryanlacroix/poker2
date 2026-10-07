@@ -12,6 +12,8 @@ public sealed class PokerPlayer
     public int Chips { get; set; }
     /// <summary>Hearts shown under the player's name. Nothing removes them yet.</summary>
     public int Hearts { get; set; }
+    /// <summary>The one item this player carries, if any.</summary>
+    public Item? Item { get; set; }
 
     public List<Card> HoleCards { get; } = new();
     /// <summary>Chips put in during the current betting round.</summary>

@@ -57,6 +57,8 @@ public partial class TableScene : Control
     private Tween? _shotDarkenTween;
     private Label _targetHint = null!;
     private WinBanner _winBanner = null!;
+    private NoticeBanner _notices = null!;
+    private readonly List<string> _itemNews = new(); // this hand's item pickups, announced once it's settled
     private bool _targeting;
     private int _toCall;
 
@@ -197,6 +199,11 @@ public partial class TableScene : Control
 
         // Added last so it draws over everything else.
         _winBanner = this.AddAt(new WinBanner { MaxBottom = _layout.BoardOrigin.Y - 4 }, Vector2.Zero, GetViewportRect().Size);
+        // Item notices run across the screen over the middle of the board.
+        float boardMid = _layout.BoardOrigin.Y + CardView.CardSize.Y * PortraitLayout.BoardCardScale / 2;
+        _notices = this.AddAt(new NoticeBanner(),
+            new Vector2(0, Mathf.Floor(boardMid - NoticeBanner.StripHeight / 2)),
+            new Vector2(GetViewportRect().Size.X, NoticeBanner.StripHeight));
     }
 
     private void BuildActionBar()
@@ -291,6 +298,8 @@ public partial class TableScene : Control
             _winningCards.Clear();
             _scoringCards.Clear();
             _winBanner.Hide();
+            _itemNews.Clear();
+            _notices.Clear();
             ApplyWinHighlights();
         };
         _table.StreetStarted += street =>
@@ -324,6 +333,11 @@ public partial class TableScene : Control
             _seats[player.Seat].SetActive(false);
         };
         _table.ChipsChanged += RefreshSeats;
+        _table.ItemGained += (player, item) =>
+        {
+            _seats[player.Seat].Refresh();
+            _itemNews.Add(ItemText.Gained(item, player.DisplayName));
+        };
         _table.Showdown += (contenders, scores) =>
         {
             foreach (var p in contenders)
@@ -352,9 +366,10 @@ public partial class TableScene : Control
         _table.WaitingForNextHand += () =>
         {
             foreach (var seat in _seats) seat.SetActive(false);
-            // Let the winning-hand banner finish before the pistol or NEXT HAND take the screen.
+            // Let the winning-hand banner finish, then announce any items, before the pistol
+            // or NEXT HAND take the screen.
             if (_winBanner.Visible) _winBanner.Finished += AfterBanner;
-            else AfterHand();
+            else AnnounceItems();
         };
         _table.GameOver += ShowGameOver;
     }
@@ -362,6 +377,25 @@ public partial class TableScene : Control
     private void AfterBanner()
     {
         _winBanner.Finished -= AfterBanner;
+        AnnounceItems();
+    }
+
+    /// <summary>One notice per item picked up this hand, in turn; then on to <see cref="AfterHand"/>.</summary>
+    private void AnnounceItems()
+    {
+        if (_itemNews.Count == 0)
+        {
+            AfterHand();
+            return;
+        }
+        _notices.Finished += AfterNotices;
+        foreach (var text in _itemNews) _notices.Enqueue(text);
+        _itemNews.Clear();
+    }
+
+    private void AfterNotices()
+    {
+        _notices.Finished -= AfterNotices;
         AfterHand();
     }
 

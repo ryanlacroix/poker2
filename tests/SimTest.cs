@@ -32,6 +32,7 @@ public partial class SimTest : Node
         Check(HandEvaluator.Compare(Score("Ah Kd 2c 3c 4d 8h 9s"), Score("Ac Kh 2d 3s 4h 8d 9c")) == 0, "split pot tie");
         Check(HandEvaluator.Compare(Score("Ah Ad Kc 7s 2d 3h 4s"), Score("Ah Ad Qc 7s 2d 3h 4s")) > 0, "pair kicker");
         TestRemoveHeart();
+        TestItems();
         ExpectBestFive("Ah Kd 7c 7s 2d 3h Ac", "Ah Ac 7c 7s Kd");
         ExpectBestFive("2h 3h 4h 5h 7h 6d 8c", "7h 5h 4h 3h 2h");
         ExpectBestFive("Ah 2d 3c 4s 5h Kd Kc", "Ah 2d 3c 4s 5h");
@@ -49,6 +50,38 @@ public partial class SimTest : Node
         Check(npc.Chips == 0 && you.Chips == 1400, "eliminated player's chips go to the shooter");
         Check(!table.RemoveHeart(npc, you) && npc.Hearts == 0, "no hearts below zero");
         table.Free();
+    }
+
+    /// <summary>Plays one all-NPC hand at a forced item chance, then calls <paramref name="done"/>.</summary>
+    private void PlayOneHand(double itemChance, PokerPlayer[] players, System.Action done)
+    {
+        var table = new PokerTable
+        {
+            DealDelay = 0, NpcThinkTime = 0, ShowdownDelay = 0, BetweenHandsDelay = 0, MaxHands = 1,
+            ItemChance = itemChance,
+        };
+        AddChild(table);
+        table.Setup(players);
+        table.GameOver += _ =>
+        {
+            table.QueueFree();
+            done();
+        };
+        table.StartGame();
+    }
+
+    private void TestItems()
+    {
+        var brain = new NpcBrain { Simulations = 20 };
+        var never = new[] { new PokerPlayer("A", 1000, brain), new PokerPlayer("B", 1000, brain) };
+        PlayOneHand(0, never, () => Check(never.All(p => p.Item == null), "no items at 0% chance"));
+
+        var always = new[] { new PokerPlayer("A", 1000, brain), new PokerPlayer("B", 1000, brain), new PokerPlayer("C", 0, brain) };
+        PlayOneHand(1, always, () =>
+        {
+            Check(always.Where(p => p.Chips > 0).All(p => p.Item == Item.Pistol), "everyone still in gets an item at 100%");
+            Check(always[2].Item == null, "busted players get no item");
+        });
     }
 
     private void RunSimulation()

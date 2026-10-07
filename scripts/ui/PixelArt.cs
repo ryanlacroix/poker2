@@ -230,6 +230,23 @@ public static class PixelArt
         ['D'] = new Color("5a6478"),
     };
 
+    // Small pistol item icon (15x12), coloured with PistolColors.
+    public static readonly string[] PistolIcon =
+    {
+        "KKKKKKKKKKKKKKK",
+        "KLLLLLLLLLLLLLK",
+        "KGGGGGGGGGGGGGK",
+        "KGgGgGGGGGGGGGK",
+        "KgggggggggggggK",
+        "KKKKKKKKKKKKKKK",
+        ".KDDDDDDDDDDK..",
+        ".KBBBBKKKKKK...",
+        ".KBbBBK.K.K....",
+        "KBBBBBK.KK.....",
+        "KBbBBBK........",
+        "KKKKKKK........",
+    };
+
     // Pot of gold (12x12): a dark cauldron heaped with coins; shown in place of the word "POT".
     public static readonly string[] PotOfGold =
     {
