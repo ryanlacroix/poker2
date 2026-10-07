@@ -44,7 +44,8 @@ public partial class PokerTable : Node
 	/// </summary>
 	public bool WaitForNextHand { get; set; }
 	/// <summary>Chance, at the end of each hand, that each empty-handed player still in the game gets a random item.</summary>
-	public double ItemChance { get; set; } = 1.0 / 6;
+	/// <remarks>TESTING: raised to 1 in 2 from the intended 1 in 6.</remarks>
+	public double ItemChance { get; set; } = 1.0 / 2;
 
 	public List<PokerPlayer> Players { get; } = new();
 	public List<Card> Community { get; } = new();
@@ -77,6 +78,22 @@ public partial class PokerTable : Node
 	public void ContinueToNextHand() => _nextHand?.TrySetResult();
 
 	/// <summary>
+	/// <paramref name="shooter"/> fires their pistol (used up) at <paramref name="target"/>
+	/// (call between hands). A shield breaks and absorbs the shot; otherwise it takes a heart.
+	/// </summary>
+	public ShotResult Shoot(PokerPlayer shooter, PokerPlayer target)
+	{
+		if (shooter.Item == Item.Pistol) shooter.Item = null;
+		if (target.Item == Item.Shield)
+		{
+			target.Item = null;
+			ChipsChanged?.Invoke();
+			return ShotResult.ShieldBroke;
+		}
+		return RemoveHeart(target, shooter) ? ShotResult.Eliminated : ShotResult.Hit;
+	}
+
+	/// <summary>
 	/// Takes one heart from <paramref name="target"/> (call between hands). At zero hearts the
 	/// target is eliminated and their chips go to <paramref name="taker"/>. Returns true if eliminated.
 	/// </summary>
@@ -93,6 +110,9 @@ public partial class PokerTable : Node
 		ChipsChanged?.Invoke();
 		return eliminated;
 	}
+
+	/// <summary>Whether <paramref name="p"/> may use their item now (between hands).</summary>
+	public bool CanUseItem(PokerPlayer p) => p.CanUseItem(HandNumber);
 
 	public override void _ExitTree()
 	{
@@ -347,7 +367,10 @@ public partial class PokerTable : Node
 			await Wait(ShowdownDelay);
 	}
 
-	/// <summary>End of hand: each player still in the game with free hands may pick up a random item.</summary>
+	/// <summary>
+	/// End of hand: each player still in the game with free hands may pick up a random item.
+	/// Players already carrying one don't roll.
+	/// </summary>
 	private void HandOutItems()
 	{
 		var items = Enum.GetValues<Item>();
@@ -355,6 +378,7 @@ public partial class PokerTable : Node
 		{
 			if (p.Chips <= 0 || p.Item != null || Random.Shared.NextDouble() >= ItemChance) continue;
 			p.Item = items[Random.Shared.Next(items.Length)];
+			p.ItemGainedOnHand = HandNumber;
 			ItemGained?.Invoke(p, p.Item.Value);
 		}
 	}

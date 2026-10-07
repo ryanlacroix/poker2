@@ -14,6 +14,14 @@ public sealed class PokerPlayer
     public int Hearts { get; set; }
     /// <summary>The one item this player carries, if any.</summary>
     public Item? Item { get; set; }
+    /// <summary>Number of the hand at whose end <see cref="Item"/> was picked up.</summary>
+    public int ItemGainedOnHand { get; set; }
+
+    /// <summary>
+    /// Items can't be used straight away: only at the end of a later hand than the one they
+    /// were picked up in.
+    /// </summary>
+    public bool CanUseItem(int handNumber) => Item != null && handNumber > ItemGainedOnHand;
 
     public List<Card> HoleCards { get; } = new();
     /// <summary>Chips put in during the current betting round.</summary>

@@ -242,13 +242,14 @@ public partial class SeatView : Control
         if (Portrait == null) return;
         var frame = PortraitFrame;
         bool dimmed = Player.Folded || Player.IsOut;
-        if (_isWinner)
-        {
-            DrawWinnerGlow(c, frame);
-        }
-        else if (_isTarget)
+        // A hand's winner can also be a target; while picking one, the red target glow wins.
+        if (_isTarget)
         {
             DrawTargetGlow(c, frame);
+        }
+        else if (_isWinner)
+        {
+            DrawWinnerGlow(c, frame);
         }
         else
         {
@@ -274,6 +275,7 @@ public partial class SeatView : Control
         var (icon, colors) = item switch
         {
             Item.Pistol => (PixelArt.PistolIcon, PixelArt.PistolColors),
+            Item.Shield => (PixelArt.ShieldIcon, PixelArt.ShieldColors),
             _ => throw new System.ArgumentOutOfRangeException(nameof(item)),
         };
         var iconSize = new Vector2(icon[0].Length, icon.Length);

@@ -52,6 +52,8 @@ public partial class TableScene : Control
     private HSlider _raiseSlider = null!;
     private Label _raiseLabel = null!;
     private Button _nextHandButton = null!;
+    private Button _useItemButton = null!;
+    private Button _dropItemButton = null!;
     private PistolView _pistol = null!;
     private ColorRect _shotDarken = null!;
     private Tween? _shotDarkenTween;
@@ -167,10 +169,11 @@ public partial class TableScene : Control
         _nextHandButton.Pressed += () =>
         {
             _nextHandButton.Visible = false;
+            HideItemButtons();
             _table.ContinueToNextHand();
         };
 
-        // Target mode (after the human wins a hand): pistol in the screen centre, hint under the board.
+        // Target mode (after the human uses a pistol): pistol in the screen centre, hint under the board.
         _pistol = new PistolView
         {
             Visible = false,
@@ -196,6 +199,18 @@ public partial class TableScene : Control
         _targetHint.AddThemeColorOverride("font_color", PixelArt.HeartRed);
 
         BuildActionBar();
+
+        // Between hands, in the action panel's area: DROP in its bottom slot whenever the human holds
+        // an item, and USE just above it once the item is ready.
+        var bar = _layout.ActionBar;
+        var itemButtonSize = new Vector2(bar.Size.X - PortraitLayout.ActionPadding * 2, PortraitLayout.ActionButtonHeight);
+        var dropAt = new Vector2(bar.Position.X + PortraitLayout.ActionPadding,
+            bar.End.Y - PortraitLayout.ActionPadding - PortraitLayout.ActionButtonHeight);
+        _dropItemButton = this.AddAt(new Button { Visible = false }, dropAt, itemButtonSize);
+        _dropItemButton.Pressed += DropItem;
+        _useItemButton = this.AddAt(new Button { Visible = false },
+            dropAt - new Vector2(0, PortraitLayout.ActionButtonHeight + PortraitLayout.ActionGap), itemButtonSize);
+        _useItemButton.Pressed += UseItem;
 
         // Added last so it draws over everything else.
         _winBanner = this.AddAt(new WinBanner { MaxBottom = _layout.BoardOrigin.Y - 4 }, Vector2.Zero, GetViewportRect().Size);
@@ -399,20 +414,51 @@ public partial class TableScene : Control
         AfterHand();
     }
 
-    /// <summary>The hand is settled: offer a shot at an NPC if it was earned, else NEXT HAND.</summary>
+    /// <summary>The hand is settled: offer NEXT HAND, and the human's item if they can use it.</summary>
     private void AfterHand()
     {
-        // Winning a hand earns a shot at an NPC; otherwise just wait for NEXT HAND.
-        var targets = _seats.Where(s => !s.Player.IsHuman && s.Player.Hearts > 0 && s.Player.Chips > 0).ToList();
-        bool earnedShot = _winners.Contains(_table.Players[0]) || GameConfig.Instance.DebugTargetEveryHand;
-        if (earnedShot && targets.Count > 0)
+        _nextHandButton.Visible = true;
+        _nextHandButton.GrabFocus(); // Enter / Space also continue
+
+        if (_table.Players[0].Item is not { } item) return;
+        // Any item can be dropped, even one picked up this hand; using one has to wait a hand.
+        _dropItemButton.Text = $"DROP {ItemText.Name(item)}";
+        _dropItemButton.Visible = true;
+        if (Items.CanBeUsed(item) && _table.CanUseItem(_table.Players[0]) && (item != Item.Pistol || Targets().Count > 0))
         {
-            EnterTargetMode(targets);
+            _useItemButton.Text = $"USE {ItemText.Name(item)}";
+            _useItemButton.Visible = true;
         }
-        else
+    }
+
+    private void HideItemButtons()
+    {
+        _useItemButton.Visible = false;
+        _dropItemButton.Visible = false;
+    }
+
+    /// <summary>Throws the human's item away, freeing the slot for a new one at the end of the next hand.</summary>
+    private void DropItem()
+    {
+        HideItemButtons();
+        _table.Players[0].Item = null;
+        _seats[0].Refresh();
+        _nextHandButton.GrabFocus();
+    }
+
+    /// <summary>NPCs who can still be shot.</summary>
+    private List<SeatView> Targets() =>
+        _seats.Where(s => !s.Player.IsHuman && s.Player.Hearts > 0 && s.Player.Chips > 0).ToList();
+
+    private void UseItem()
+    {
+        HideItemButtons();
+        switch (_table.Players[0].Item)
         {
-            _nextHandButton.Visible = true;
-            _nextHandButton.GrabFocus(); // Enter / Space also continue
+            case Item.Pistol:
+                _nextHandButton.Visible = false;
+                EnterTargetMode(Targets());
+                break;
         }
     }
 
@@ -436,8 +482,14 @@ public partial class TableScene : Control
         _pistol.Fire();
         DarkenForShot();
         target.FlashHit();
-        bool eliminated = _table.RemoveHeart(target.Player, _table.Players[0]);
-        target.SetStatus(eliminated ? "ELIMINATED" : "DIRECT HIT", PixelArt.HeartRed);
+        var result = _table.Shoot(_table.Players[0], target.Player);
+        _seats[0].Refresh(); // the pistol is used up
+        target.SetStatus(result switch
+        {
+            ShotResult.ShieldBroke => "SHIELD BROKE",
+            ShotResult.Eliminated => "ELIMINATED",
+            _ => "DIRECT HIT",
+        }, PixelArt.HeartRed);
         target.Refresh();
 
         GetTree().CreateTimer(0.9).Timeout += () =>

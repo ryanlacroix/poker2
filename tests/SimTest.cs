@@ -32,10 +32,23 @@ public partial class SimTest : Node
         Check(HandEvaluator.Compare(Score("Ah Kd 2c 3c 4d 8h 9s"), Score("Ac Kh 2d 3s 4h 8d 9c")) == 0, "split pot tie");
         Check(HandEvaluator.Compare(Score("Ah Ad Kc 7s 2d 3h 4s"), Score("Ah Ad Qc 7s 2d 3h 4s")) > 0, "pair kicker");
         TestRemoveHeart();
+        TestShield();
         TestItems();
         ExpectBestFive("Ah Kd 7c 7s 2d 3h Ac", "Ah Ac 7c 7s Kd");
         ExpectBestFive("2h 3h 4h 5h 7h 6d 8c", "7h 5h 4h 3h 2h");
         ExpectBestFive("Ah 2d 3c 4s 5h Kd Kc", "Ah 2d 3c 4s 5h");
+    }
+
+    private void TestShield()
+    {
+        var table = new PokerTable();
+        var you = new PokerPlayer("YOU", 1000) { Item = Item.Pistol };
+        var npc = new PokerPlayer("NPC", 400, new NpcBrain()) { Item = Item.Shield };
+        table.Setup(new[] { you, npc });
+        Check(table.Shoot(you, npc) == ShotResult.ShieldBroke && npc.Hearts == 3 && npc.Item == null, "a shield breaks instead of losing a heart");
+        Check(you.Item == null, "shooting uses up the pistol");
+        Check(table.Shoot(you, npc) == ShotResult.Hit && npc.Hearts == 2, "once broken, the next shot takes a heart");
+        table.Free();
     }
 
     private void TestRemoveHeart()
@@ -53,7 +66,7 @@ public partial class SimTest : Node
     }
 
     /// <summary>Plays one all-NPC hand at a forced item chance, then calls <paramref name="done"/>.</summary>
-    private void PlayOneHand(double itemChance, PokerPlayer[] players, System.Action done)
+    private void PlayOneHand(double itemChance, PokerPlayer[] players, System.Action<PokerTable> done)
     {
         var table = new PokerTable
         {
@@ -64,8 +77,8 @@ public partial class SimTest : Node
         table.Setup(players);
         table.GameOver += _ =>
         {
+            done(table);
             table.QueueFree();
-            done();
         };
         table.StartGame();
     }
@@ -74,14 +87,23 @@ public partial class SimTest : Node
     {
         var brain = new NpcBrain { Simulations = 20 };
         var never = new[] { new PokerPlayer("A", 1000, brain), new PokerPlayer("B", 1000, brain) };
-        PlayOneHand(0, never, () => Check(never.All(p => p.Item == null), "no items at 0% chance"));
+        PlayOneHand(0, never, _ => Check(never.All(p => p.Item == null), "no items at 0% chance"));
 
         var always = new[] { new PokerPlayer("A", 1000, brain), new PokerPlayer("B", 1000, brain), new PokerPlayer("C", 0, brain) };
-        PlayOneHand(1, always, () =>
+        PlayOneHand(1, always, table =>
         {
-            Check(always.Where(p => p.Chips > 0).All(p => p.Item == Item.Pistol), "everyone still in gets an item at 100%");
+            Check(always.Where(p => p.Chips > 0).All(p => p.Item != null), "everyone still in gets an item at 100%");
             Check(always[2].Item == null, "busted players get no item");
+            Check(!table.CanUseItem(always[0]), "a new item can't be used at the end of the hand it was picked up");
+            Check(always[0].CanUseItem(table.HandNumber + 1), "an item can be used at the end of the next hand");
         });
+
+        // Someone already carrying an item doesn't roll for another.
+        var holding = new[] { new PokerPlayer("A", 1000, brain), new PokerPlayer("B", 1000, brain) };
+        holding[0].Item = Item.Pistol;
+        holding[0].ItemGainedOnHand = -1;
+        PlayOneHand(1, holding, _ =>
+            Check(holding[0].Chips == 0 || holding[0].ItemGainedOnHand == -1, "no new item while already carrying one"));
     }
 
     private void RunSimulation()
