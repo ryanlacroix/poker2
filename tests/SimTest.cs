@@ -34,6 +34,8 @@ public partial class SimTest : Node
         TestRemoveHeart();
         TestShield();
         TestItems();
+        TestItemPhase();
+        TestItemOdds();
         ExpectBestFive("Ah Kd 7c 7s 2d 3h Ac", "Ah Ac 7c 7s Kd");
         ExpectBestFive("2h 3h 4h 5h 7h 6d 8c", "7h 5h 4h 3h 2h");
         ExpectBestFive("Ah 2d 3c 4s 5h Kd Kc", "Ah 2d 3c 4s 5h");
@@ -66,12 +68,20 @@ public partial class SimTest : Node
     }
 
     /// <summary>Plays one all-NPC hand at a forced item chance, then calls <paramref name="done"/>.</summary>
-    private void PlayOneHand(double itemChance, PokerPlayer[] players, System.Action<PokerTable> done)
+    private void PlayOneHand(double itemChance, PokerPlayer[] players, System.Action<PokerTable> done) =>
+        PlayHands(1, itemChance, players, done);
+
+    /// <summary>
+    /// Plays up to <paramref name="hands"/> all-NPC hands (with no pauses, so every hand but the
+    /// last is followed by an item phase), then calls <paramref name="done"/>.
+    /// </summary>
+    private void PlayHands(int hands, double itemChance, PokerPlayer[] players, System.Action<PokerTable> done,
+        System.Action<PokerTable>? setup = null)
     {
         var table = new PokerTable
         {
-            DealDelay = 0, NpcThinkTime = 0, ShowdownDelay = 0, BetweenHandsDelay = 0, MaxHands = 1,
-            ItemChance = itemChance,
+            DealDelay = 0, NpcThinkTime = 0, ShowdownDelay = 0, BetweenHandsDelay = 0, ShotDelay = 0,
+            MaxHands = hands, ItemChance = itemChance,
         };
         AddChild(table);
         table.Setup(players);
@@ -80,7 +90,47 @@ public partial class SimTest : Node
             done(table);
             table.QueueFree();
         };
+        setup?.Invoke(table);
         table.StartGame();
+    }
+
+    private void TestItemOdds()
+    {
+        var rng = new System.Random(1);
+        int shields = Enumerable.Range(0, 40_000).Count(_ => Items.Random(rng) == Item.Shield);
+        Check(shields is > 9_000 and < 11_000, $"a quarter of item pickups are shields (got {shields} of 40000)");
+    }
+
+    private void TestItemPhase()
+    {
+        // A ready gun in the hands of a maximally aggressive NPC always gets fired after the hand,
+        // unless they folded it (then they get no item turn). A's huge stack keeps them in the game.
+        var gunman = new NpcBrain { Simulations = 20, Aggression = 1 };
+        var brain = new NpcBrain { Simulations = 20 };
+        var players = new[]
+        {
+            new PokerPlayer("A", 100_000, gunman) { Item = Item.Gun, ItemGainedOnHand = -1 },
+            new PokerPlayer("B", 1000, brain), new PokerPlayer("C", 1000, brain),
+        };
+        PokerPlayer? shooter = null, victim = null;
+        bool? gunmanFolded = null; // as of the (only) item phase, after hand 1
+        PlayHands(2, 0, players, _ =>
+        {
+            if (gunmanFolded == false)
+            {
+                Check(shooter == players[0] && victim != null && victim != players[0], "an aggressive NPC fires a ready gun at someone else");
+                Check(players[0].Item == null, "firing uses up the NPC's gun");
+                Check(players.Skip(1).Sum(p => p.Hearts) == 5, "the shot takes exactly one heart");
+            }
+            else if (gunmanFolded == true)
+            {
+                Check(shooter == null && players[0].Item == Item.Gun, "a player who folded gets no item turn");
+            }
+        }, setup: table =>
+        {
+            table.Shot += (s, t, _) => { shooter = s; victim = t; };
+            table.ItemPhaseFinished += () => gunmanFolded ??= players[0].Folded;
+        });
     }
 
     private void TestItems()
@@ -94,8 +144,10 @@ public partial class SimTest : Node
         {
             Check(always.Where(p => p.Chips > 0).All(p => p.Item != null), "everyone still in gets an item at 100%");
             Check(always[2].Item == null, "busted players get no item");
-            Check(!table.CanUseItem(always[0]), "a new item can't be used at the end of the hand it was picked up");
-            Check(always[0].CanUseItem(table.HandNumber + 1), "an item can be used at the end of the next hand");
+            // A or B, whoever didn't bust (and so picked up an item).
+            var holder = always.First(p => p.Item != null);
+            Check(!table.CanUseItem(holder), "a new item can't be used at the end of the hand it was picked up");
+            Check(holder.CanUseItem(table.HandNumber + 1), "an item can be used at the end of the next hand");
         });
 
         // Someone already carrying an item doesn't roll for another.
@@ -130,6 +182,10 @@ public partial class SimTest : Node
             Check(total == expected, $"chips conserved after hand {table.HandNumber} ({total} != {expected})");
             Check(table.Players.All(p => p.Chips >= 0), "no negative stacks");
         };
+        // Stand in for the view: start item turns straight away, and count the shots fired.
+        int shots = 0;
+        table.WaitingForItemPhase += table.BeginItemPhase;
+        table.Shot += (_, _, _) => shots++;
         // Stand in for the "next hand" button.
         int pauses = 0;
         table.WaitingForNextHand += () =>
@@ -141,7 +197,7 @@ public partial class SimTest : Node
         {
             // Every hand but the game-ending one should pause for the button.
             Check(pauses == table.HandNumber - 1, $"paused {pauses} times over {table.HandNumber} hands");
-            GD.Print($"Simulated {table.HandNumber} hands, leader {winner.DisplayName} with {winner.Chips}");
+            GD.Print($"Simulated {table.HandNumber} hands ({shots} gunshots), leader {winner.DisplayName} with {winner.Chips}");
             GD.Print(_failures == 0 ? "ALL TESTS PASSED" : $"{_failures} FAILURE(S)");
             GetTree().Quit(_failures);
         };
