@@ -230,6 +230,48 @@ public static class PixelArt
         ['D'] = new Color("5a6478"),
     };
 
+    // Small pistol item icon (15x12), coloured with PistolColors.
+    public static readonly string[] PistolIcon =
+    {
+        "KKKKKKKKKKKKKKK",
+        "KLLLLLLLLLLLLLK",
+        "KGGGGGGGGGGGGGK",
+        "KGgGgGGGGGGGGGK",
+        "KgggggggggggggK",
+        "KKKKKKKKKKKKKKK",
+        ".KDDDDDDDDDDK..",
+        ".KBBBBKKKKKK...",
+        ".KBbBBK.K.K....",
+        "KBBBBBK.KK.....",
+        "KBbBBBK........",
+        "KKKKKKK........",
+    };
+
+    // Small shield item icon (11x12): a steel heater shield with a red cross.
+    public static readonly string[] ShieldIcon =
+    {
+        "KKKKKKKKKKK",
+        "KLLLLRGGGGK",
+        "KLLLLRGGGGK",
+        "KRRRRRRRRRK",
+        "KLLLLRGGGGK",
+        "KLLLLRGGGGK",
+        ".KLLLRGGGK.",
+        ".KLLLRGGGK.",
+        "..KLLRGGK..",
+        "...KLRGK...",
+        "....KRK....",
+        ".....K.....",
+    };
+
+    public static readonly Dictionary<char, Color> ShieldColors = new()
+    {
+        ['K'] = Ink,
+        ['L'] = new Color("d4dce8"),
+        ['G'] = new Color("8a96aa"),
+        ['R'] = Red,
+    };
+
     // Pot of gold (12x12): a dark cauldron heaped with coins; shown in place of the word "POT".
     public static readonly string[] PotOfGold =
     {

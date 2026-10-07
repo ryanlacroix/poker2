@@ -28,12 +28,6 @@ public partial class GameConfig : Node
     public int StartingChips { get; set; } = 1000;
     /// <summary>Hearts each player starts with (shown under their name).</summary>
     public int StartingHearts { get; set; } = 3;
-
-    /// <summary>
-    /// TESTING ONLY: enter target mode after every hand, not just hands the human wins.
-    /// Set back to false (or delete) when done testing.
-    /// </summary>
-    public bool DebugTargetEveryHand { get; set; } = true;
     public int SmallBlind { get; set; } = 10;
     public int BigBlind { get; set; } = 20;
     public double NpcThinkTime { get; set; } = 0.8;

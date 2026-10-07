@@ -242,25 +242,50 @@ public partial class SeatView : Control
         if (Portrait == null) return;
         var frame = PortraitFrame;
         bool dimmed = Player.Folded || Player.IsOut;
-        if (_isWinner)
-        {
-            DrawWinnerGlow(c, frame);
-        }
-        else if (_isTarget)
+        // A hand's winner can also be a target; while picking one, the red target glow wins.
+        if (_isTarget)
         {
             DrawTargetGlow(c, frame);
+        }
+        else if (_isWinner)
+        {
+            DrawWinnerGlow(c, frame);
         }
         else
         {
             c.DrawRect(frame.Grow(1), dimmed ? PixelArt.Ink : PixelArt.Paper, false, 1);
             c.DrawTextureRect(Portrait, frame, false, dimmed ? new Color(0.45f, 0.45f, 0.5f) : Colors.White);
         }
+        DrawItem(c, frame);
         if (HitActive)
         {
             float k = 1f - (float)((Time.GetTicksMsec() / 1000.0 - _hitAt) / HitSeconds);
             bool blink = (int)(Time.GetTicksMsec() / 80) % 2 == 0;
             c.DrawRect(frame, new Color(blink ? Colors.White : PixelArt.HeartRed, 0.65f * k));
         }
+    }
+
+    /// <summary>
+    /// The carried item, as a small icon on a dark plate in the portrait's bottom corner
+    /// nearest the cards.
+    /// </summary>
+    private void DrawItem(CanvasItem c, Rect2 frame)
+    {
+        if (Player.Item is not { } item) return;
+        var (icon, colors) = item switch
+        {
+            Item.Pistol => (PixelArt.PistolIcon, PixelArt.PistolColors),
+            Item.Shield => (PixelArt.ShieldIcon, PixelArt.ShieldColors),
+            _ => throw new System.ArgumentOutOfRangeException(nameof(item)),
+        };
+        var iconSize = new Vector2(icon[0].Length, icon.Length);
+        var plateSize = iconSize + new Vector2(4, 4);
+        var plate = new Rect2(
+            Style == SeatStyle.CompactRight ? frame.Position.X : frame.End.X - plateSize.X,
+            frame.End.Y - plateSize.Y, plateSize);
+        c.DrawRect(plate, PixelArt.Ink);
+        c.DrawRect(plate.Grow(-1), new Color("2d3a5a"));
+        PixelArt.DrawColored(c, icon, colors, plate.Position + new Vector2(2, 2), 1);
     }
 
     /// <summary>Red pulsing halo and tint for a seat that can be targeted, plus a red seat outline.</summary>

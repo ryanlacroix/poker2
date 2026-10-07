@@ -31,9 +31,13 @@ tests/               headless smoke test
 
 Every player starts with 3 hearts (`GameConfig.StartingHearts`), shown as pixel hearts under their name (lost hearts would show as empty outlines). Running out of chips knocks a player out, as before.
 
-**Target mode:** when you win a hand, a pixel pistol appears over the board and every NPC still in the game glows red. Tap one to take a heart from them; then the next hand is dealt. An NPC who loses their last heart is eliminated, and their chips go to you.
+**Items:** a player can carry one item, shown as a small icon on their portrait. At the end of each hand, every player still in the game who isn't already carrying an item has a 1 in 6 chance (`PokerTable.ItemChance`; temporarily 1 in 2 for testing) of getting a random item, and each pickup is announced in turn ("SHARK got a gun"). Item names and messages live in `Item.cs`.
 
-> **Testing flag:** `GameConfig.DebugTargetEveryHand` is currently `true`, so target mode runs after *every* hand. Set it to `false` to restore the real rule.
+**Using the pistol:** an item can't be used at the end of the hand it was picked up in, only from the end of the next hand on. Once it's ready, a **USE PISTOL** button appears in the bottom-left button area. Use it and a pixel pistol appears over the board while every NPC still in the game glows red. Tap one to take a heart from them; the pistol is used up and the next hand is dealt.
+
+**The shield:** protects from the moment it's picked up: a shot at a shielded player breaks the shield instead of taking a heart. It has no use action.
+
+**Dropping items:** whenever you hold an item between hands, a **DROP <item>** button sits in the bottom-left button area, even at the end of the hand you picked it up. Dropping frees the slot for a new item at the end of the next hand. An NPC who loses their last heart is eliminated, and their chips go to you.
 
 ## Portrait layout and Android
 
@@ -42,7 +46,7 @@ The base resolution is 360x640 (portrait), locked to portrait orientation. `Port
 - NPCs are stacked closely at the top, 3 down each screen edge (6 in total). Each seat has a 48px portrait beside its cards, with the chip piles (drawn at 2x) on the table next to it.
 - The board sits in the space below them, drawn at 2x size.
 - Your seat (48px portrait, 2x cards) is pinned to the bottom-right corner, and your chips sit on the table's near edge above it.
-- A column of big, well-spaced FOLD / CALL / raise-slider / RAISE buttons sits to the left of your seat (sizes in `PortraitLayout`). MENU is at the top centre.
+- A column of big, well-spaced FOLD / CALL / raise-slider / RAISE buttons sits to the left of your seat (sizes in `PortraitLayout`). DEBUG is at the top centre: it opens a popup of testing actions (GIVE GUN / GIVE SHIELD, which replace your current item and make it ready to use at once).
 - On taller phones (for example 1080x2400, which gives 360x800) the extra height goes to the board area. Wider screens widen the table.
 - On phones, safe-area insets keep the UI clear of notches and gesture bars.
 
