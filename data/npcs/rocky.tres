@@ -2,6 +2,7 @@
 
 [ext_resource type="Script" path="res://scripts/ai/NpcBrain.cs" id="1"]
 [ext_resource type="Texture2D" path="res://assets/portraits/rocky.png" id="2"]
+[ext_resource type="Texture2D" path="res://assets/portraits/rocky_injured.png" id="3"]
 
 [resource]
 script = ExtResource("1")
@@ -11,3 +12,4 @@ Aggression = 0.2
 BluffRate = 0.03
 Simulations = 300
 Portrait = ExtResource("2")
+InjuredPortrait = ExtResource("3")

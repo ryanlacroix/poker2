@@ -25,6 +25,7 @@ public partial class GameConfig : Node
 
     public string PlayerName { get; set; } = "YOU";
     public string PlayerPortraitPath { get; set; } = "res://assets/portraits/you.png";
+    public string PlayerInjuredPortraitPath { get; set; } = "res://assets/portraits/you_injured.png";
     public int StartingChips { get; set; } = 1000;
     /// <summary>Hearts each player starts with (shown under their name).</summary>
     public int StartingHearts { get; set; } = 3;

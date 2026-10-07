@@ -2,7 +2,9 @@
 """Generate the 16x16 player portraits in assets/portraits/.
 
 Each portrait is ASCII art plus a palette. '.' is background; a dark outline is
-added automatically around the figure. Edit the art below and re-run:
+added automatically around the figure. Each character also gets an injured
+portrait (<name>_injured.png, shown at 1 heart): the same art with the rows in
+INJURIES swapped in. Edit the art below and re-run:
 
     python3 tools/generate_portraits.py
 
@@ -22,6 +24,9 @@ COMMON = {
     "s": "#c48a64",  # skin shadow
     "W": "#f4f1e8",  # white
     "M": "#8a3a3a",  # mouth
+    "X": "#ece6d4",  # bandage
+    "r": "#b02030",  # blood
+    "u": "#7a4a8a",  # bruise
 }
 
 PORTRAITS = {
@@ -163,6 +168,64 @@ PORTRAITS = {
 }
 
 
+# Injured versions: row index -> replacement row. Bandages (with a blood spot), black eyes,
+# cracked lenses, knocked-out teeth, nosebleeds and pained mouths.
+INJURIES = {
+    "you": {
+        5: "...XXXXXrXXXX...",
+        6: "...SSSSSSuuuS...",
+        7: "...SSKSSSuKuS...",
+        8: "..sSSSSSSuuuSs..",
+        11: "....SSMMMMSS....",
+        12: ".....MSSSSM.....",
+    },
+    "rocky": {
+        5: "...hXXXXXrXXh...",
+        7: "...SSKSSSuKuS...",
+        8: "..sSSSSSSuuuSs..",
+        12: "....bMbbbbMb....",
+    },
+    "lucky": {
+        5: "...RXXXXXrXXR...",
+        7: "...SSKSSSuKuS...",
+        8: "..sSSSSSSuuuSs..",
+        11: "...SSKWKWWKSS...",
+    },
+    "maverick": {
+        5: "...HXXXXrXXXX...",
+        8: "..sKGGKSSKWGKs..",
+        10: "...SSSSSrSSSS...",
+        12: ".....SMSSSM.....",
+    },
+    "shark": {
+        4: "...AXXXXrXXXA...",
+        5: "..AAAAAAAAuuuA..",
+        6: "..AAKAAAAAuKuA..",
+        7: "..AAAAAAAAuuuA..",
+        9: "..AKWKKKWKWKKA..",
+    },
+    "doc": {
+        3: "....XXXXrXXX....",
+        8: "..sKEKSKKSKWKs..",
+        12: ".....SMMMMS.....",
+    },
+    "duke": {
+        0: "...Y..Y.....Y...",
+        1: "...YY.YY....YY..",
+        5: "...HXXXXXrXXH...",
+        6: "...SuuuSSYYYS...",
+        7: "...SuKuSSYKYS...",
+        8: "..sSuuuSSYYYSs..",
+        11: "..H.SSMMMMSS.H..",
+        12: ".....MSSSSM.....",
+    },
+}
+
+
+def injured(art, rows):
+    return [rows.get(y, row) for y, row in enumerate(art)]
+
+
 def render(background, palette, art):
     colors = {**COMMON, **palette}
     size = len(art)
@@ -185,7 +248,8 @@ def main():
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     for name, (background, palette, art) in PORTRAITS.items():
         render(background, palette, art).save(OUT_DIR / f"{name}.png")
-        print(f"wrote assets/portraits/{name}.png")
+        render(background, palette, injured(art, INJURIES[name])).save(OUT_DIR / f"{name}_injured.png")
+        print(f"wrote assets/portraits/{name}.png, {name}_injured.png")
 
 
 if __name__ == "__main__":

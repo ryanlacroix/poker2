@@ -8,7 +8,7 @@ namespace PokerGame;
 /// </summary>
 public partial class DebugMenu : Control
 {
-    /// <summary>Draws over everything on the table, including portraits and the pistol.</summary>
+    /// <summary>Draws over everything on the table, including portraits and the gun.</summary>
     private const int ModalZ = 10;
 
     /// <summary>Raised when a "give" action is picked; the menu closes itself.</summary>
@@ -40,7 +40,7 @@ public partial class DebugMenu : Control
         var title = new Label { Text = "DEBUG", HorizontalAlignment = HorizontalAlignment.Center };
         title.AddThemeColorOverride("font_color", PixelArt.Gold);
         box.AddChild(title);
-        AddButton(box, "GIVE GUN", () => Give(Item.Pistol));
+        AddButton(box, "GIVE GUN", () => Give(Item.Gun));
         AddButton(box, "GIVE SHIELD", () => Give(Item.Shield));
         AddButton(box, "CLOSE", Hide);
     }

@@ -21,6 +21,8 @@ public partial class SeatView : Control
 
     public PokerPlayer Player { get; init; } = null!;
     public Texture2D? Portrait { get; init; }
+    /// <summary>Shown instead of <see cref="Portrait"/> once the player is down to their last heart (or out of hearts).</summary>
+    public Texture2D? InjuredPortrait { get; init; }
     public SeatStyle Style { get; init; }
     /// <summary>Heart slots to draw; lost hearts show as empty.</summary>
     public int MaxHearts { get; init; } = 3;
@@ -30,6 +32,12 @@ public partial class SeatView : Control
     private bool IsCompact => Style != SeatStyle.Wide;
     private static float WideLabelsY => CardView.CardSize.Y * WideCardScale + 2; // just under the 2x cards
     // Compact seats mirror: left column is [portrait][cards], right column is [cards][portrait].
+    /// <summary>Centre of the portrait, in the parent's coordinates.</summary>
+    public Vector2 PortraitCenter => Position + PortraitFrame.GetCenter();
+
+    /// <summary>The portrait to draw right now: injured at 1 heart or fewer, if there is one.</summary>
+    private Texture2D? Face => Player.Hearts <= 1 && InjuredPortrait != null ? InjuredPortrait : Portrait;
+
     private Rect2 PortraitFrame => Style switch
     {
         SeatStyle.CompactLeft => new Rect2(new Vector2(1, 1), PortraitSize),
@@ -51,7 +59,7 @@ public partial class SeatView : Control
     private const double HitSeconds = 0.6;
 
     /// <summary>
-    /// Z index of the shot's screen-darkening overlay. Portraits (and the pistol) draw above it;
+    /// Z index of the shot's screen-darkening overlay. Portraits (and the gun) draw above it;
     /// everything else stays below.
     /// </summary>
     public const int DarkenZ = 1;
@@ -115,7 +123,8 @@ public partial class SeatView : Control
 
     public void Refresh()
     {
-        _chips.Text = Player.IsOut ? "OUT" : $"${Player.Chips}";
+        // RIP once shot out of hearts (straight away, not just from the next hand); OUT if they went broke.
+        _chips.Text = Player.Hearts == 0 ? "RIP" : Player.IsOut ? "OUT" : $"${Player.Chips}";
         bool faceUp = Player.IsHuman || _reveal;
         for (int i = 0; i < 2; i++)
         {
@@ -244,7 +253,7 @@ public partial class SeatView : Control
     /// </summary>
     private void DrawPortrait(CanvasItem c)
     {
-        if (Portrait == null) return;
+        if (Face == null) return;
         var frame = PortraitFrame;
         bool dimmed = Player.Folded || Player.IsOut;
         // A hand's winner can also be a target; while picking one, the red target glow wins.
@@ -259,8 +268,11 @@ public partial class SeatView : Control
         else
         {
             c.DrawRect(frame.Grow(1), dimmed ? PixelArt.Ink : PixelArt.Paper, false, 1);
-            c.DrawTextureRect(Portrait, frame, false, dimmed ? new Color(0.45f, 0.45f, 0.5f) : Colors.White);
+            c.DrawTextureRect(Face, frame, false, dimmed ? new Color(0.45f, 0.45f, 0.5f) : Colors.White);
         }
+        // Out of the game: an X if shot down to no hearts, a dollar sign if they went broke.
+        if (Player.Hearts == 0) DrawEliminatedX(c, frame);
+        else if (Player.IsOut) DrawBrokeSign(c, frame);
         DrawItem(c, frame);
         if (HitActive)
         {
@@ -279,7 +291,7 @@ public partial class SeatView : Control
         if (Player.Item is not { } item) return;
         var (icon, colors) = item switch
         {
-            Item.Pistol => (PixelArt.PistolIcon, PixelArt.PistolColors),
+            Item.Gun => (PixelArt.GunIcon, PixelArt.GunColors),
             Item.Shield => (PixelArt.ShieldIcon, PixelArt.ShieldColors),
             _ => throw new System.ArgumentOutOfRangeException(nameof(item)),
         };
@@ -293,6 +305,30 @@ public partial class SeatView : Control
         PixelArt.DrawColored(c, icon, colors, plate.Position + new Vector2(2, 2), 1);
     }
 
+    /// <summary>
+    /// A black X across the portrait of a player shot out of the game, drawn in blocks on the
+    /// portrait's own pixel grid (16 art pixels across) so it matches the art.
+    /// </summary>
+    private static void DrawEliminatedX(CanvasItem c, Rect2 frame)
+    {
+        float px = frame.Size.X / 16;
+        var block = new Vector2(px * 2, px);
+        for (int i = 1; i < 15; i++)
+        {
+            c.DrawRect(new Rect2(frame.Position + new Vector2(i - 1, i) * px, block), Colors.Black);
+            c.DrawRect(new Rect2(frame.Position + new Vector2(15 - i, i) * px, block), Colors.Black);
+        }
+    }
+
+    /// <summary>A black dollar sign centred on the portrait of a player who ran out of chips.</summary>
+    private static void DrawBrokeSign(CanvasItem c, Rect2 frame)
+    {
+        int px = (int)(frame.Size.X / 16);
+        var sign = PixelArt.DollarSign;
+        var size = new Vector2(sign[0].Length, sign.Length) * px;
+        PixelArt.Draw(c, sign, frame.Position + ((frame.Size - size) / 2).Floor(), px, Colors.Black);
+    }
+
     /// <summary>Red pulsing halo and tint for a seat that can be targeted, plus a red seat outline.</summary>
     private void DrawTargetGlow(CanvasItem c, Rect2 frame)
     {
@@ -304,7 +340,7 @@ public partial class SeatView : Control
         c.DrawRect(frame.Grow(3), new Color(red, 0.6f * pulse), false, 1);
         c.DrawRect(frame.Grow(2), new Color("ff8a8a"), false, 1);
         c.DrawRect(frame.Grow(1), red, false, 1);
-        c.DrawTextureRect(Portrait!, frame, false, Colors.White.Lerp(new Color("ff9090"), 0.55f * pulse));
+        c.DrawTextureRect(Face!, frame, false, Colors.White.Lerp(new Color("ff9090"), 0.55f * pulse));
         c.DrawRect(frame, new Color(red, 0.22f * pulse));
     }
 
@@ -317,7 +353,7 @@ public partial class SeatView : Control
         c.DrawRect(frame.Grow(3), new Color(PixelArt.Gold, 0.6f * pulse), false, 1);
         c.DrawRect(frame.Grow(2), new Color("ffe9a0"), false, 1);
         c.DrawRect(frame.Grow(1), PixelArt.Gold, false, 1);
-        c.DrawTextureRect(Portrait!, frame, false, Colors.White.Lerp(new Color("ffe9a0"), 0.5f * pulse));
+        c.DrawTextureRect(Face!, frame, false, Colors.White.Lerp(new Color("ffe9a0"), 0.5f * pulse));
         c.DrawRect(frame, new Color(PixelArt.Gold, 0.25f * pulse));
 
         // Two diagonal corners twinkle at a time.

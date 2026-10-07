@@ -42,11 +42,11 @@ public partial class SimTest : Node
     private void TestShield()
     {
         var table = new PokerTable();
-        var you = new PokerPlayer("YOU", 1000) { Item = Item.Pistol };
+        var you = new PokerPlayer("YOU", 1000) { Item = Item.Gun };
         var npc = new PokerPlayer("NPC", 400, new NpcBrain()) { Item = Item.Shield };
         table.Setup(new[] { you, npc });
         Check(table.Shoot(you, npc) == ShotResult.ShieldBroke && npc.Hearts == 3 && npc.Item == null, "a shield breaks instead of losing a heart");
-        Check(you.Item == null, "shooting uses up the pistol");
+        Check(you.Item == null, "shooting uses up the gun");
         Check(table.Shoot(you, npc) == ShotResult.Hit && npc.Hearts == 2, "once broken, the next shot takes a heart");
         table.Free();
     }
@@ -100,7 +100,7 @@ public partial class SimTest : Node
 
         // Someone already carrying an item doesn't roll for another.
         var holding = new[] { new PokerPlayer("A", 1000, brain), new PokerPlayer("B", 1000, brain) };
-        holding[0].Item = Item.Pistol;
+        holding[0].Item = Item.Gun;
         holding[0].ItemGainedOnHand = -1;
         PlayOneHand(1, holding, _ =>
             Check(holding[0].Chips == 0 || holding[0].ItemGainedOnHand == -1, "no new item while already carrying one"));
@@ -110,7 +110,10 @@ public partial class SimTest : Node
     {
         var brains = GameConfig.OpponentPaths.Select(GD.Load<NpcBrain>).ToList();
         foreach (var brain in brains)
+        {
             Check(brain.Portrait != null, $"{brain.DisplayName} has a portrait");
+            Check(brain.InjuredPortrait != null, $"{brain.DisplayName} has an injured portrait");
+        }
         var table = new PokerTable
         {
             DealDelay = 0, NpcThinkTime = 0, ShowdownDelay = 0, BetweenHandsDelay = 0, MaxHands = 300,

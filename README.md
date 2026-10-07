@@ -20,7 +20,7 @@ scripts/
   autoload/GameConfig.cs  blinds, stacks, timings, opponent roster
 data/npcs/*.tres     NPC personalities (edit in the inspector)
 assets/sprites/      world_map.png background; fonts/, audio/ are placeholders
-assets/portraits/    16x16 player portraits (one per NPC + you.png)
+assets/portraits/    16x16 player portraits (one per NPC + you.png), each with an _injured variant
 tools/               generate_world_map.py, generate_portraits.py (ignored by Godot)
 tests/               headless smoke test
 ```
@@ -29,11 +29,11 @@ tests/               headless smoke test
 
 ## Hearts
 
-Every player starts with 3 hearts (`GameConfig.StartingHearts`), shown as pixel hearts under their name (lost hearts would show as empty outlines). Running out of chips knocks a player out, as before.
+Every player starts with 3 hearts (`GameConfig.StartingHearts`), shown as pixel hearts under their name (lost hearts show as empty outlines). Down to the last heart, a player's portrait switches to an injured version (bandage, black eye and so on). Running out of chips knocks a player out, as before.
 
 **Items:** a player can carry one item, shown as a small icon on their portrait. At the end of each hand, every player still in the game who isn't already carrying an item has a 1 in 6 chance (`PokerTable.ItemChance`; temporarily 1 in 2 for testing) of getting a random item, and each pickup is announced in turn ("SHARK got a gun"). Item names and messages live in `Item.cs`.
 
-**Using the pistol:** an item can't be used at the end of the hand it was picked up in, only from the end of the next hand on. Once it's ready, a **USE PISTOL** button appears in the bottom-left button area. Use it and a pixel pistol appears over the board while every NPC still in the game glows red. Tap one to take a heart from them; the pistol is used up and the next hand is dealt.
+**Using the gun:** an item can't be used at the end of the hand it was picked up in, only from the end of the next hand on. Once it's ready, a **USE GUN** button appears in the bottom-left button area. Use it and a pixel gun appears over the board while every NPC still in the game glows red. Tap one to take a heart from them; the gun is used up and the next hand is dealt.
 
 **The shield:** protects from the moment it's picked up: a shot at a shielded player breaks the shield instead of taking a heart. It has no use action.
 
@@ -62,7 +62,7 @@ The world-map background (`assets/sprites/world_map.png`, 400x200; a screen-size
 
 ## Adding an opponent
 
-Duplicate a file in `data/npcs/`, set its Portrait (add the art to `tools/generate_portraits.py` or drop in your own 16x16 PNG), tweak Tightness / Aggression / BluffRate / Simulations, and add its path to `GameConfig.OpponentPaths`. The table fits at most 6 opponents (3 per side); with fewer, `PortraitLayout` picks a balanced subset of seats.
+Duplicate a file in `data/npcs/`, set its Portrait and InjuredPortrait (add the art and its injury rows to `tools/generate_portraits.py`, or drop in your own 16x16 PNGs), tweak Tightness / Aggression / BluffRate / Simulations, and add its path to `GameConfig.OpponentPaths`. The table fits at most 6 opponents (3 per side); with fewer, `PortraitLayout` picks a balanced subset of seats.
 
 ## Tests
 

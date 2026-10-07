@@ -16,6 +16,8 @@ public partial class NpcBrain : Resource
 	[Export] public string DisplayName { get; set; } = "NPC";
 	/// <summary>16x16 pixel portrait shown at the seat (see tools/generate_portraits.py).</summary>
 	[Export] public Texture2D? Portrait { get; set; }
+	/// <summary>The same face beaten up, shown once they're down to their last heart.</summary>
+	[Export] public Texture2D? InjuredPortrait { get; set; }
 	/// <summary>0 = plays almost anything, 1 = only premium hands.</summary>
 	[Export(PropertyHint.Range, "0,1,0.01")] public float Tightness { get; set; } = 0.5f;
 	/// <summary>0 = calls and checks, 1 = bets and raises constantly.</summary>

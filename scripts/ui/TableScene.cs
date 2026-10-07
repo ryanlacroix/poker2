@@ -56,8 +56,9 @@ public partial class TableScene : Control
     private Button _dropItemButton = null!;
     private bool _itemPhase; // the hand is settled and the human may use or drop their item
     private DebugMenu _debugMenu = null!;
-    private PistolView _pistol = null!;
+    private GunView _gun = null!;
     private ColorRect _shotDarken = null!;
+    private ShotTracer _shotTracer = null!;
     private Tween? _shotDarkenTween;
     private Label _targetHint = null!;
     private WinBanner _winBanner = null!;
@@ -116,6 +117,7 @@ public partial class TableScene : Control
 
         // Players[0] is the human (bottom right); opponents fill the edge columns clockwise.
         var humanPortrait = GD.Load<Texture2D>(GameConfig.Instance.PlayerPortraitPath);
+        var humanInjuredPortrait = GD.Load<Texture2D>(GameConfig.Instance.PlayerInjuredPortraitPath);
         for (int i = 0; i < _table.Players.Count; i++)
         {
             var player = _table.Players[i];
@@ -124,6 +126,7 @@ public partial class TableScene : Control
             {
                 Player = player,
                 Portrait = player.Brain?.Portrait ?? humanPortrait,
+                InjuredPortrait = player.Brain?.InjuredPortrait ?? humanInjuredPortrait,
                 Style = slot.Style,
                 MaxHearts = GameConfig.Instance.StartingHearts,
                 Position = slot.SeatPosition.Round(),
@@ -176,22 +179,24 @@ public partial class TableScene : Control
             ClearTableThenContinue();
         };
 
-        // Target mode (after the human uses a pistol): pistol in the screen centre, hint under the board.
-        _pistol = new PistolView
+        // Target mode (after the human uses a gun): gun in the screen centre, hint under the board.
+        _gun = new GunView
         {
             Visible = false,
             // Floats in the centre of the screen.
-            Position = (GetViewportRect().Size / 2 - PistolView.ArtSize / 2).Round(),
+            Position = (GetViewportRect().Size / 2 - GunView.ArtSize / 2).Round(),
         };
-        AddChild(_pistol);
-        // Gunshot flash-to-dark over the table; the pistol and portraits sit above it.
+        AddChild(_gun);
+        // Gunshot flash-to-dark over the table; the gun and portraits sit above it.
         _shotDarken = this.AddAt(new ColorRect
         {
             Color = new Color(0, 0, 0, 0),
             MouseFilter = MouseFilterEnum.Ignore,
             ZIndex = SeatView.DarkenZ,
         }, Vector2.Zero, GetViewportRect().Size);
-        _pistol.ZIndex = SeatView.DarkenZ + 1;
+        _gun.ZIndex = SeatView.DarkenZ + 1;
+        // Same layer as the darkening, drawn after it: over the dimmed table, under the portraits.
+        _shotTracer = this.AddAt(new ShotTracer { ZIndex = SeatView.DarkenZ }, Vector2.Zero, GetViewportRect().Size);
         _targetHint = this.AddAt(new Label
         {
             Text = "PICK A TARGET",
@@ -388,7 +393,7 @@ public partial class TableScene : Control
         _table.WaitingForNextHand += () =>
         {
             foreach (var seat in _seats) seat.SetActive(false);
-            // Let the winning-hand banner finish, then announce any items, before the pistol
+            // Let the winning-hand banner finish, then announce any items, before the gun
             // or NEXT HAND take the screen.
             if (_winBanner.Visible) _winBanner.Finished += AfterBanner;
             else AnnounceItems();
@@ -438,7 +443,7 @@ public partial class TableScene : Control
         // Any item can be dropped, even one picked up this hand; using one has to wait a hand.
         _dropItemButton.Text = $"DROP {ItemText.Name(item)}";
         _dropItemButton.Visible = true;
-        if (Items.CanBeUsed(item) && _table.CanUseItem(_table.Players[0]) && (item != Item.Pistol || Targets().Count > 0))
+        if (Items.CanBeUsed(item) && _table.CanUseItem(_table.Players[0]) && (item != Item.Gun || Targets().Count > 0))
         {
             _useItemButton.Text = $"USE {ItemText.Name(item)}";
             _useItemButton.Visible = true;
@@ -483,7 +488,7 @@ public partial class TableScene : Control
         HideItemButtons();
         switch (_table.Players[0].Item)
         {
-            case Item.Pistol:
+            case Item.Gun:
                 _nextHandButton.Visible = false;
                 EnterTargetMode(Targets());
                 break;
@@ -493,8 +498,8 @@ public partial class TableScene : Control
     private void EnterTargetMode(List<SeatView> targets)
     {
         _targeting = true;
-        _pistol.Visible = true;
-        _pistol.SetProcess(true);
+        _gun.Visible = true;
+        _gun.SetProcess(true);
         _targetHint.Visible = true;
         foreach (var seat in targets) seat.SetTargetable(true);
     }
@@ -507,11 +512,12 @@ public partial class TableScene : Control
         foreach (var seat in _seats) seat.SetTargetable(false);
         _targetHint.Visible = false;
 
-        _pistol.Fire();
+        _gun.Fire();
         DarkenForShot();
+        _shotTracer.Fire(_seats[0].PortraitCenter, target.PortraitCenter);
         target.FlashHit();
         var result = _table.Shoot(_table.Players[0], target.Player);
-        _seats[0].Refresh(); // the pistol is used up
+        _seats[0].Refresh(); // the gun is used up
         target.SetStatus(result switch
         {
             ShotResult.ShieldBroke => "SHIELD BROKE",
@@ -523,8 +529,8 @@ public partial class TableScene : Control
         GetTree().CreateTimer(0.9).Timeout += () =>
         {
             if (!IsInstanceValid(this)) return; // left the scene meanwhile
-            _pistol.Visible = false;
-            _pistol.SetProcess(false);
+            _gun.Visible = false;
+            _gun.SetProcess(false);
             ClearTableThenContinue();
         };
     }
