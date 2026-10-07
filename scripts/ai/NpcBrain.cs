@@ -75,6 +75,26 @@ public partial class NpcBrain : Resource
 		return new Decision(PokerAction.Raise, target);
 	}
 
+	/// <summary>
+	/// Item phase: fire a ready gun (more likely the more aggressive), and timid players who
+	/// won't fire it drop it to try for a shield instead. A shield is always worth keeping.
+	/// </summary>
+	public ItemDecision DecideItem(PokerPlayer self, bool canUse, IReadOnlyList<PokerPlayer> targets)
+	{
+		if (self.Item != Item.Gun || !canUse || targets.Count == 0)
+			return new ItemDecision(ItemAction.Keep);
+		if (Rng.NextSingle() < 0.5f + 0.5f * Aggression)
+			return new ItemDecision(ItemAction.Use, PickTarget(targets));
+		return Aggression < 0.3f ? new ItemDecision(ItemAction.Drop) : new ItemDecision(ItemAction.Keep);
+	}
+
+	/// <summary>
+	/// The most rewarding shot: finishing someone off takes their whole stack, so favour big stacks
+	/// with few hearts left; a shield only breaks, so shielded players are a poor target.
+	/// </summary>
+	private static PokerPlayer PickTarget(IReadOnlyList<PokerPlayer> targets) =>
+		targets.MaxBy(t => (float)t.Chips / t.Hearts * (t.Item == Item.Shield ? 0.25f : 1f) * RandRange(0.8f, 1.2f))!;
+
 	/// <summary>Probability of winning at showdown against <paramref name="opponents"/> random hands.</summary>
 	public float EstimateEquity(IReadOnlyList<Card> hole, IReadOnlyList<Card> community, int opponents)
 	{

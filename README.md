@@ -31,13 +31,15 @@ tests/               headless smoke test
 
 Every player starts with 3 hearts (`GameConfig.StartingHearts`), shown as pixel hearts under their name (lost hearts show as empty outlines). Down to the last heart, a player's portrait switches to an injured version (bandage, black eye and so on). Running out of chips knocks a player out, as before.
 
-**Items:** a player can carry one item, shown as a small icon on their portrait. At the end of each hand, every player still in the game who isn't already carrying an item has a 1 in 6 chance (`PokerTable.ItemChance`; temporarily 1 in 2 for testing) of getting a random item, and each pickup is announced in turn ("SHARK got a gun"). Item names and messages live in `Item.cs`.
+**Items:** a player can carry one item, shown as a small icon on their portrait. At the end of each hand, every player still in the game who isn't already carrying an item has a 1 in 6 chance (`PokerTable.ItemChance`; temporarily 1 in 2 for testing) of getting a random item (3 in 4 a gun, 1 in 4 a shield; weights in `Items.Weight`), and each pickup is announced in turn ("SHARK got a gun"). Item names and messages live in `Item.cs`.
 
-**Using the gun:** an item can't be used at the end of the hand it was picked up in, only from the end of the next hand on. Once it's ready, a **USE GUN** button appears in the bottom-left button area. Use it and a pixel gun appears over the board while every NPC still in the game glows red. Tap one to take a heart from them; the gun is used up and the next hand is dealt.
+**Item phase:** after each hand (once the winning hand and any pickups have been announced), everyone still in the game who holds an item and didn't fold that hand gets a turn, starting with that hand's dealer and going round in play order. On a turn a player can use their item, drop it, or keep it. NPCs decide for themselves (`NpcBrain.DecideItem`); ones that just keep their item pass without a pause. On your turn, buttons in the bottom-left area offer **DROP <item>** and, once the item is ready, **USE <item>**; to keep it, press NEXT HAND, and the rest of the table takes its turns before the next hand is dealt. Otherwise NEXT HAND appears when every turn is done.
+
+**The gun:** can't be used at the end of the hand it was picked up in, only from the end of the next hand on. When you use it, a pixel gun appears over the board and everyone you can shoot glows red; tap one. A shot takes a heart (or breaks a shield) and uses up the gun. A player who loses their last heart is eliminated, and their chips go to the shooter. NPCs fire ready guns more often the more aggressive they are, aiming for big stacks with few hearts left; timid ones drop a gun they won't fire, hoping for a shield.
 
 **The shield:** protects from the moment it's picked up: a shot at a shielded player breaks the shield instead of taking a heart. It has no use action.
 
-**Dropping items:** whenever you hold an item between hands, a **DROP <item>** button sits in the bottom-left button area, even at the end of the hand you picked it up. Dropping frees the slot for a new item at the end of the next hand. An NPC who loses their last heart is eliminated, and their chips go to you.
+**Dropping items:** an item can be dropped on its holder's turn, even at the end of the hand it was picked up in. Dropping frees the slot for a new item at the end of the next hand.
 
 ## Portrait layout and Android
 

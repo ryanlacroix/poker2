@@ -60,7 +60,8 @@ public partial class TableScene : Control
     private Button _nextHandButton = null!;
     private Button _useItemButton = null!;
     private Button _dropItemButton = null!;
-    private bool _itemPhase; // the hand is settled and the human may use or drop their item
+    private bool _humanItemTurn; // the item phase is waiting on the human's choice
+    private bool _continueAfterItems; // NEXT HAND was pressed on the human's item turn
     private DebugMenu _debugMenu = null!;
     private GunView _gun = null!;
     private ColorRect _shotDarken = null!;
@@ -175,18 +176,27 @@ public partial class TableScene : Control
         var debugButton = this.AddAt(new Button { Text = "DEBUG" }, _layout.DebugButton.Position, _layout.DebugButton.Size);
         debugButton.Pressed += () => _debugMenu.Show();
 
-        // Shown under the board, in the (then empty) pot label's spot, once a hand is over.
+        // Shown under the board, in the (then empty) pot label's spot, once a hand is over, and on
+        // the human's item turn, where it means "keep my item": the rest of the table takes its
+        // item turns, then the next hand is dealt straight away.
         _nextHandButton = this.AddAt(new Button { Text = "NEXT HAND", Visible = false },
             potCenter - PortraitLayout.NextHandSize / 2, PortraitLayout.NextHandSize);
         _nextHandButton.Pressed += () =>
         {
             _nextHandButton.Visible = false;
-            _itemPhase = false;
-            HideItemButtons();
-            ClearTableThenContinue();
+            if (_humanItemTurn)
+            {
+                _continueAfterItems = true;
+                SubmitItemDecision(new ItemDecision(ItemAction.Keep));
+            }
+            else
+            {
+                ClearTableThenContinue();
+            }
         };
 
-        // Target mode (after the human uses a gun): gun in the screen centre, hint under the board.
+        // A gunshot in the item phase: gun in the screen centre (and, while the human aims, a hint
+        // under the board).
         _gun = new GunView
         {
             Visible = false,
@@ -215,14 +225,14 @@ public partial class TableScene : Control
 
         BuildActionBar();
 
-        // Between hands, in the action panel's area: DROP in its bottom slot whenever the human holds
-        // an item, and USE just above it once the item is ready.
+        // The human's item turn, in the action panel's area: DROP in its bottom slot, and USE just
+        // above it once the item is ready. (Keeping it is NEXT HAND.)
         var bar = _layout.ActionBar;
         var itemButtonSize = new Vector2(bar.Size.X - PortraitLayout.ActionPadding * 2, PortraitLayout.ActionButtonHeight);
         var dropAt = new Vector2(bar.Position.X + PortraitLayout.ActionPadding,
             bar.End.Y - PortraitLayout.ActionPadding - PortraitLayout.ActionButtonHeight);
         _dropItemButton = this.AddAt(new Button { Visible = false }, dropAt, itemButtonSize);
-        _dropItemButton.Pressed += DropItem;
+        _dropItemButton.Pressed += () => SubmitItemDecision(new ItemDecision(ItemAction.Drop));
         _useItemButton = this.AddAt(new Button { Visible = false },
             dropAt - new Vector2(0, PortraitLayout.ActionButtonHeight + PortraitLayout.ActionGap), itemButtonSize);
         _useItemButton.Pressed += UseItem;
@@ -397,13 +407,42 @@ public partial class TableScene : Control
             }
             ApplyWinHighlights();
         };
-        _table.WaitingForNextHand += () =>
+        _table.WaitingForItemPhase += () =>
         {
             foreach (var seat in _seats) seat.SetActive(false);
-            // Let the winning-hand banner finish, then announce any items, before the gun
-            // or NEXT HAND take the screen.
+            // Let the winning-hand banner finish, then announce any items, before the item turns.
             if (_winBanner.Visible) _winBanner.Finished += AfterBanner;
             else AnnounceItems();
+        };
+        _table.ItemTurnStarted += (player, canUse) =>
+        {
+            foreach (var seat in _seats) seat.SetActive(seat.Player == player);
+            if (player.IsHuman)
+            {
+                _humanItemTurn = true;
+                ShowItemButtons(canUse);
+            }
+        };
+        _table.Shot += OnShot;
+        _table.ItemDropped += (player, item) =>
+        {
+            _seats[player.Seat].SetStatus($"DROPPED {ItemText.Name(item)}", PixelArt.Paper);
+            _seats[player.Seat].Refresh();
+        };
+        _table.ItemPhaseFinished += () =>
+        {
+            foreach (var seat in _seats) seat.SetActive(false);
+        };
+        _table.WaitingForNextHand += () =>
+        {
+            if (_continueAfterItems)
+            {
+                _continueAfterItems = false;
+                ClearTableThenContinue();
+                return;
+            }
+            _nextHandButton.Visible = true;
+            _nextHandButton.GrabFocus(); // Enter / Space also continue
         };
         _table.GameOver += ShowGameOver;
     }
@@ -414,12 +453,12 @@ public partial class TableScene : Control
         AnnounceItems();
     }
 
-    /// <summary>One notice per item picked up this hand, in turn; then on to <see cref="AfterHand"/>.</summary>
+    /// <summary>One notice per item picked up this hand, in turn; then the item turns begin.</summary>
     private void AnnounceItems()
     {
         if (_itemNews.Count == 0)
         {
-            AfterHand();
+            _table.BeginItemPhase();
             return;
         }
         _notices.Finished += AfterNotices;
@@ -430,55 +469,44 @@ public partial class TableScene : Control
     private void AfterNotices()
     {
         _notices.Finished -= AfterNotices;
-        AfterHand();
+        _table.BeginItemPhase();
     }
 
-    /// <summary>The hand is settled: offer NEXT HAND, and the human's item if they can use it.</summary>
-    private void AfterHand()
-    {
-        _nextHandButton.Visible = true;
-        _nextHandButton.GrabFocus(); // Enter / Space also continue
-        _itemPhase = true;
-        ShowItemButtons();
-    }
-
-    /// <summary>DROP for any item the human holds; USE as well once a usable item is ready.</summary>
-    private void ShowItemButtons()
+    /// <summary>The human's item turn: NEXT HAND (keep it) and DROP always, USE as well when the item is ready.</summary>
+    private void ShowItemButtons(bool canUse)
     {
         HideItemButtons();
         if (_table.Players[0].Item is not { } item) return;
-        // Any item can be dropped, even one picked up this hand; using one has to wait a hand.
+        _nextHandButton.Visible = true;
         _dropItemButton.Text = $"DROP {ItemText.Name(item)}";
         _dropItemButton.Visible = true;
-        if (Items.CanBeUsed(item) && _table.CanUseItem(_table.Players[0]) && (item != Item.Gun || Targets().Count > 0))
+        if (canUse)
         {
             _useItemButton.Text = $"USE {ItemText.Name(item)}";
             _useItemButton.Visible = true;
         }
+        _nextHandButton.GrabFocus(); // Enter / Space keep it and move on
     }
 
     private void HideItemButtons()
     {
         _useItemButton.Visible = false;
         _dropItemButton.Visible = false;
+        _nextHandButton.Visible = false;
     }
 
-    /// <summary>Throws the human's item away, freeing the slot for a new one at the end of the next hand.</summary>
-    private void DropItem()
+    /// <summary>Ends the human's item turn with <paramref name="decision"/>.</summary>
+    private void SubmitItemDecision(ItemDecision decision)
     {
+        if (!_humanItemTurn) return;
+        _humanItemTurn = false;
         HideItemButtons();
-        _table.Players[0].Item = null;
-        _seats[0].Refresh();
-        _nextHandButton.GrabFocus();
+        _table.SubmitItemDecision(decision);
     }
-
-    /// <summary>NPCs who can still be shot.</summary>
-    private List<SeatView> Targets() =>
-        _seats.Where(s => !s.Player.IsHuman && s.Player.Hearts > 0 && s.Player.Chips > 0).ToList();
 
     /// <summary>
     /// Debug: hands the human <paramref name="item"/>, replacing whatever they carry. It counts as
-    /// picked up a hand ago, so it can be used at the end of this hand (or right now, between hands).
+    /// picked up a hand ago, so it can be used at the end of this hand (or right now, on their item turn).
     /// </summary>
     private void DebugGiveItem(Item item)
     {
@@ -486,18 +514,17 @@ public partial class TableScene : Control
         human.Item = item;
         human.ItemGainedOnHand = _table.HandNumber - 1;
         _seats[0].Refresh();
-        if (_itemPhase && !_targeting) ShowItemButtons();
+        if (_humanItemTurn && !_targeting) ShowItemButtons(_table.CanUseItem(human));
     }
 
     private void UseItem()
     {
-        _itemPhase = false;
-        HideItemButtons();
         switch (_table.Players[0].Item)
         {
             case Item.Gun:
-                _nextHandButton.Visible = false;
-                EnterTargetMode(Targets());
+                HideItemButtons();
+                var targets = _table.GunTargets(_table.Players[0]);
+                EnterTargetMode(_seats.Where(s => targets.Contains(s.Player)).ToList());
                 break;
         }
     }
@@ -511,20 +538,28 @@ public partial class TableScene : Control
         foreach (var seat in targets) seat.SetTargetable(true);
     }
 
-    /// <summary>The human picked an NPC: fire, take a heart, then deal the next hand.</summary>
+    /// <summary>The human picked who to shoot; the table fires (see <see cref="OnShot"/>).</summary>
     private void OnSeatTargeted(SeatView target)
     {
         if (!_targeting) return;
         _targeting = false;
         foreach (var seat in _seats) seat.SetTargetable(false);
         _targetHint.Visible = false;
+        SubmitItemDecision(new ItemDecision(ItemAction.Use, target.Player));
+    }
 
-        _gun.Fire();
+    /// <summary>
+    /// Someone fired a gun: the screen darkens, a tracer joins the two portraits and the target
+    /// flashes. When it's the human's shot, the big gun they aimed with fires too, and goes away
+    /// as the table moves on; NPC shots don't show it.
+    /// </summary>
+    private void OnShot(PokerPlayer shooter, PokerPlayer targetPlayer, ShotResult result)
+    {
+        var target = _seats[targetPlayer.Seat];
         DarkenForShot();
-        _shotTracer.Fire(_seats[0].PortraitCenter, target.PortraitCenter);
+        _shotTracer.Fire(_seats[shooter.Seat].PortraitCenter, target.PortraitCenter);
         target.FlashHit();
-        var result = _table.Shoot(_table.Players[0], target.Player);
-        _seats[0].Refresh(); // the gun is used up
+        _seats[shooter.Seat].Refresh(); // the gun is used up
         target.SetStatus(result switch
         {
             ShotResult.ShieldBroke => "SHIELD BROKE",
@@ -533,12 +568,13 @@ public partial class TableScene : Control
         }, PixelArt.HeartRed);
         target.Refresh();
 
-        GetTree().CreateTimer(0.9).Timeout += () =>
+        if (!shooter.IsHuman) return;
+        _gun.Fire();
+        GetTree().CreateTimer(_table.ShotDelay).Timeout += () =>
         {
-            if (!IsInstanceValid(this)) return; // left the scene meanwhile
+            if (!IsInstanceValid(this) || _targeting) return; // left the scene, or the human is aiming again
             _gun.Visible = false;
             _gun.SetProcess(false);
-            ClearTableThenContinue();
         };
     }
 
