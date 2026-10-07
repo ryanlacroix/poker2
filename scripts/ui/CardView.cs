@@ -9,9 +9,14 @@ public partial class CardView : Control
 {
     public static readonly Vector2 CardSize = new(26, 36);
 
+    // A newly placed card pops in a little large, then quickly settles to its real size.
+    private const float PopScale = 1.25f;
+    private const double PopSeconds = 0.15;
+
     private Card? _card;
     private bool _faceUp;
     private CardHighlight _highlight;
+    private Tween? _popTween;
 
     public bool ShowEmptySlot { get; set; }
     /// <summary>Whole-number size multiplier; the pixel art is drawn scaled so it stays crisp.</summary>
@@ -27,9 +32,22 @@ public partial class CardView : Control
 
     public void SetCard(Card? card, bool faceUp)
     {
+        if (card != null && card != _card) PopIn();
         _card = card;
         _faceUp = faceUp;
         QueueRedraw();
+    }
+
+    /// <summary>Starts the card at <see cref="PopScale"/> and shrinks it to its final size, from its centre.</summary>
+    private void PopIn()
+    {
+        if (!IsInsideTree()) return;
+        _popTween?.Kill();
+        PivotOffset = Size / 2;
+        Scale = Vector2.One * PopScale;
+        _popTween = CreateTween();
+        _popTween.TweenProperty(this, "scale", Vector2.One, PopSeconds)
+            .SetTrans(Tween.TransitionType.Quad).SetEase(Tween.EaseType.Out);
     }
 
     /// <summary>
