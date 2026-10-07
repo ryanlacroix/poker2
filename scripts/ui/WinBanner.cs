@@ -9,7 +9,7 @@ namespace PokerGame;
 /// </summary>
 public partial class WinBanner : Control
 {
-    private const float HoldTime = 1.0f;
+    private const float HoldTime = 2.0f;
     private const float FadeTime = 0.4f;
     private const int MaxTitleScale = 3;
     private const int OutlineSize = 4; // in unscaled font pixels: 2 on each side

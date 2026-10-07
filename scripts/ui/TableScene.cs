@@ -42,6 +42,12 @@ public partial class TableScene : Control
     private readonly HashSet<Card> _scoringCards = new(); // just the cards that made each winning hand
     private PotView _pot = null!;
     private int _shownPot;
+    private readonly List<int> _shownChips = new();                          // each player's stack as last shown
+    private readonly Dictionary<SeatView, Label> _chipChangeLabels = new(); // the "+100" currently over a portrait
+    private const double ChipChangeHold = 0.6;
+    private const double ChipChangeFade = 0.4;
+    private const float ChipChangeRise = 10;
+    private const int ChipChangeFontSize = UiTheme.FontSize + 4;
     private Tween? _potTween;
     private const int PotFontSize = UiTheme.FontSize + 4;
     private const int PotPopSize = PotFontSize + 6;
@@ -134,6 +140,7 @@ public partial class TableScene : Control
             AddChild(seat);
             seat.Targeted += OnSeatTargeted;
             _seats.Add(seat);
+            _shownChips.Add(player.Chips);
 
             // Stack (whole bankroll) left/above, this hand's bet right/below.
             var stack = new ChipPileView
@@ -591,6 +598,9 @@ public partial class TableScene : Control
         foreach (var seat in _seats) seat.Refresh();
         for (int i = 0; i < _table.Players.Count; i++)
         {
+            int chips = _table.Players[i].Chips;
+            if (chips != _shownChips[i]) ShowChipChange(_seats[i], chips - _shownChips[i]);
+            _shownChips[i] = chips;
             _stackPiles[i].Amount = _table.Players[i].Chips;
             _betPiles[i].Amount = _table.Players[i].TotalBet;
         }
@@ -598,6 +608,40 @@ public partial class TableScene : Control
         _pot.Amount = pot;
         if (pot > _shownPot) PopPotLabel();
         _shownPot = pot;
+    }
+
+    /// <summary>
+    /// Floats "+100" (gold, like the seat's stack label) or "-20" (red) over a seat's portrait, then
+    /// drifts up and fades. A newer change on the same seat replaces the old one.
+    /// </summary>
+    private void ShowChipChange(SeatView seat, int delta)
+    {
+        if (_chipChangeLabels.Remove(seat, out var old) && IsInstanceValid(old)) old.QueueFree();
+
+        var size = new Vector2(96, UiTheme.LineHeight + 8);
+        var label = this.AddAt(new Label
+        {
+            Text = delta > 0 ? $"+{delta}" : $"{delta}",
+            HorizontalAlignment = HorizontalAlignment.Center,
+            VerticalAlignment = VerticalAlignment.Center,
+            MouseFilter = MouseFilterEnum.Ignore,
+            ZIndex = SeatView.DarkenZ + 1, // with the portraits, above the shot darkening
+        }, (seat.PortraitCenter - size / 2).Round(), size);
+        label.AddThemeColorOverride("font_color", delta > 0 ? PixelArt.Gold : PixelArt.HeartRed);
+        label.AddThemeColorOverride("font_outline_color", Colors.Black);
+        label.AddThemeConstantOverride("outline_size", 3);
+        label.AddThemeFontSizeOverride("font_size", ChipChangeFontSize);
+        _chipChangeLabels[seat] = label;
+
+        var tween = label.CreateTween();
+        tween.TweenProperty(label, "position:y", label.Position.Y - ChipChangeRise, ChipChangeHold + ChipChangeFade)
+            .SetTrans(Tween.TransitionType.Quad).SetEase(Tween.EaseType.Out);
+        tween.Parallel().TweenProperty(label, "modulate:a", 0f, ChipChangeFade).SetDelay(ChipChangeHold);
+        tween.TweenCallback(Callable.From(() =>
+        {
+            if (_chipChangeLabels.TryGetValue(seat, out var current) && current == label) _chipChangeLabels.Remove(seat);
+            label.QueueFree();
+        }));
     }
 
     /// <summary>Money went into the pot: the pot display swells briefly, then settles back.</summary>
