@@ -15,15 +15,11 @@ func _ready() -> void:
 	center.add_child(box)
 
 	var title := Label.new()
-	title.text = "PIXEL POKER"
+	title.text = "poker2"
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	title.add_theme_font_size_override("font_size", 44)
 	title.add_theme_color_override("font_color", PixelArt.GOLD)
 	box.add_child(title)
-	var subtitle := Label.new()
-	subtitle.text = "No-limit Texas Hold'em"
-	subtitle.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	box.add_child(subtitle)
 	var spacer := Control.new()
 	spacer.custom_minimum_size = Vector2(0, 16)
 	box.add_child(spacer)
