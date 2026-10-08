@@ -220,12 +220,15 @@ func _test_items() -> void:
 
 
 func _run_simulation() -> void:
+	for number in range(1, TableLevel.TABLES.size() + 1):
+		for path in TableLevel.new(number).opponents:
+			var brain: NpcBrain = load(path)
+			_check(brain.portrait != null, "%s has a portrait" % brain.display_name)
+			_check(brain.injured_portrait != null, "%s has an injured portrait" % brain.display_name)
+	# The game runs with the first table's NPCs.
 	var brains: Array[NpcBrain] = []
-	for path in GameConfig.OPPONENT_PATHS:
+	for path in TableLevel.new(1).opponents:
 		brains.append(load(path))
-	for brain in brains:
-		_check(brain.portrait != null, "%s has a portrait" % brain.display_name)
-		_check(brain.injured_portrait != null, "%s has an injured portrait" % brain.display_name)
 	var table := PokerTable.new()
 	table.deal_delay = 0
 	table.npc_think_time = 0

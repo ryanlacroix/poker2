@@ -1,0 +1,16 @@
+[gd_resource type="Resource" script_class="NpcBrain" format=3]
+
+[ext_resource type="Script" path="res://scripts/ai/npc_brain.gd" id="1"]
+[ext_resource type="Texture2D" path="res://assets/portraits/queen.png" id="2"]
+[ext_resource type="Texture2D" path="res://assets/portraits/queen_injured.png" id="3"]
+
+[resource]
+script = ExtResource("1")
+display_name = "QUEEN"
+tightness = 0.7
+aggression = 0.75
+bluff_rate = 0.12
+simulations = 1500
+randomness = 0.03
+portrait = ExtResource("2")
+injured_portrait = ExtResource("3")

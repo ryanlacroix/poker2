@@ -1,17 +1,6 @@
 extends Node
 ## Global game settings, autoloaded as /root/GameConfig.
 
-## NPC personalities seated at the table, in seat order (clockwise from the human).
-## The portrait table has room for up to [constant PortraitLayout.MAX_OPPONENTS].
-const OPPONENT_PATHS: Array[String] = [
-	"res://data/npcs/rocky.tres",    # tight-passive
-	"res://data/npcs/lucky.tres",    # calling station
-	"res://data/npcs/maverick.tres", # loose-aggressive
-	"res://data/npcs/shark.tres",    # tight-aggressive, strongest reader
-	"res://data/npcs/doc.tres",      # balanced
-	"res://data/npcs/duke.tres",     # maniac
-]
-
 var player_name := "YOU"
 var player_portrait_path := "res://assets/portraits/you.png"
 var player_injured_portrait_path := "res://assets/portraits/you_injured.png"
@@ -34,9 +23,10 @@ func table_level() -> TableLevel:
 
 
 func create_players() -> Array[PokerPlayer]:
-	var starting_chips := table_level().starting_chips
+	var level := table_level()
+	var starting_chips := level.starting_chips
 	var players: Array[PokerPlayer] = [PokerPlayer.new(player_name, starting_chips, null, starting_hearts)]
-	for path in OPPONENT_PATHS:
+	for path in level.opponents:
 		var brain: NpcBrain = load(path)
 		players.append(PokerPlayer.new(brain.display_name, starting_chips, brain, starting_hearts))
 	return players
