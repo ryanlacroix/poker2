@@ -1,9 +1,9 @@
 class_name PortraitLayout
 extends RefCounted
-## Where everything goes on a portrait (phone) screen. Top: NPCs stacked closely in a column down
-## each screen edge, with their chips beside them. Below: the board, drawn large. Bottom: the
+## Where everything goes on a portrait (phone) screen. Top: a header strip naming the table, then
+## NPCs stacked closely in a column down each screen edge, with their chips beside them. Below: the board, drawn large. Bottom: the
 ## human's seat in the bottom-right corner, with the action panel beside it. Designed on a 360x672 base
-## (everything fits in 360x648; the rest is breathing room). Extra height opens a gap above the
+## (everything fits in 360x664; the rest is breathing room). Extra height opens a gap above the
 ## NPCs (up to a limit) and around the board; extra width widens the table. Safe-area insets keep
 ## clear of notches and gesture bars.
 
@@ -26,6 +26,8 @@ const BASE_SIZE := Vector2(360, 672)
 const MAX_OPPONENTS := 6
 const MARGIN := 4.0
 const ROW_GAP := 3.0
+## Strip along the top of the screen, above the felt, holding the table name.
+const HEADER_HEIGHT := 16.0
 ## Space between the top of the screen and the NPC rows (the DEBUG button sits between the
 ## columns, not above them).
 const TOP_MARGIN := 10.0
@@ -65,6 +67,8 @@ var pot_center: Vector2
 var opponents: Array[SeatSlot] = []
 var human: SeatSlot
 var debug_button: Rect2
+## The header strip (see [constant HEADER_HEIGHT]).
+var header: Rect2
 var action_bar: Rect2
 
 
@@ -78,9 +82,10 @@ func _init(viewport: Vector2, opponent_count: int, safe_top := 0.0, safe_bottom 
 	var block_height := card.y + 6 + NEXT_HAND_SIZE.y # the board, with the pot / NEXT HAND under it
 	# Height everything needs with nothing to spare: the NPC rows, the board block (with room for
 	# winning cards to lift above it) and the action panel at the bottom.
-	var needed := TOP_MARGIN + compact.y * 3 + ROW_GAP * 2 + 6 + block_height + 4 + ACTION_PANEL_HEIGHT + MARGIN
+	var needed := HEADER_HEIGHT + TOP_MARGIN + compact.y * 3 + ROW_GAP * 2 + 6 + block_height + 4 + ACTION_PANEL_HEIGHT + MARGIN
 	var spare := maxf(0, viewport.y - safe_top - safe_bottom - needed)
-	var top := safe_top + TOP_MARGIN + floorf(minf(spare * SPARE_TOP_SHARE, MAX_SPARE_TOP))
+	header = Rect2(MARGIN, safe_top, viewport.x - MARGIN * 2, HEADER_HEIGHT)
+	var top := header.end.y + TOP_MARGIN + floorf(minf(spare * SPARE_TOP_SHARE, MAX_SPARE_TOP))
 	var row_y: Array[float] = [top, top + compact.y + ROW_GAP, top + (compact.y + ROW_GAP) * 2]
 	var npc_bottom := row_y[2] + compact.y
 
@@ -107,8 +112,8 @@ func _init(viewport: Vector2, opponent_count: int, safe_top := 0.0, safe_bottom 
 	var bottom := viewport.y - safe_bottom - MARGIN
 	var human_seat := Vector2(viewport.x - MARGIN - wide.x, bottom - wide.y)
 	action_bar = Rect2(MARGIN, bottom - ACTION_PANEL_HEIGHT, viewport.x - wide.x - MARGIN * 3, ACTION_PANEL_HEIGHT)
-	# The felt reaches up to cover half of the gap above the NPC rows.
-	var table_top := floorf(safe_top + (top - 2 - safe_top) / 2)
+	# The felt reaches up to cover half of the gap between the header and the NPC rows.
+	var table_top := floorf(header.end.y + (top - 2 - header.end.y) / 2)
 	table = Rect2(2, table_top, viewport.x - 4, human_seat.y - 2 - table_top)
 
 	var pair_bounds := TableScene.horizontal_pile_unit_bounds()

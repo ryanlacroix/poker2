@@ -7,6 +7,9 @@ extends Control
 signal give_item(item: Item.Kind)
 ## Emitted when LOSE A HEART is picked; the menu closes itself.
 signal lose_heart
+## Emitted when WIN TABLE is picked (shows the win screen, to reach the next table); the
+## menu closes itself.
+signal win_table
 
 ## Draws over everything on the table, including portraits and the gun.
 const MODAL_Z := 10
@@ -46,6 +49,9 @@ func _ready() -> void:
 	_add_button(box, "LOSE A HEART", func() -> void:
 		hide()
 		lose_heart.emit())
+	_add_button(box, "WIN TABLE", func() -> void:
+		hide()
+		win_table.emit())
 	_add_button(box, "CLOSE", hide)
 
 

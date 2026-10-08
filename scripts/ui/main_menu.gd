@@ -40,7 +40,9 @@ func _ready() -> void:
 
 	var play := _button("JOIN TABLE")
 	play.size_flags_horizontal = SIZE_SHRINK_CENTER
-	play.pressed.connect(func() -> void: get_tree().change_scene_to_file("res://scenes/table.tscn"))
+	play.pressed.connect(func() -> void:
+		GameConfig.table_number = 1
+		get_tree().change_scene_to_file("res://scenes/table.tscn"))
 	box.add_child(play)
 	play.grab_focus.call_deferred()
 

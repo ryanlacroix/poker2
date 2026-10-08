@@ -18,10 +18,21 @@ const POT_POP_SIZE := POT_FONT_SIZE + 6
 ## Z index of the winning-hand banner and item notices: above the portraits, the gun and the
 ## chip-change labels (all at SeatView.DARKEN_Z + 1), below the DEBUG popup.
 const BANNER_Z := SeatView.DARKEN_Z + 2
+## The "TABLE N" label: a little bigger than the players' names, to fill the header strip.
+const TABLE_LABEL_FONT_SIZE := 18
+## Dark blue felt behind the table, filling the screen.
+const BACKDROP := Color("16203a")
+## Share of the felt's pixels drawn a shade darker / lighter on a textured felt.
+const FELT_DARK_SHARE := 0.12
+const FELT_LIGHT_SHARE := 0.08
 
+var _level: TableLevel = GameConfig.table_level()
 var _table: PokerTable
 var _layout: PortraitLayout
-var _world_map: Texture2D = load(UiTheme.WORLD_MAP_PATH)
+var _backdrop_texture: Texture2D
+# Grained felt, covering the whole table rect (null on a plain felt).
+var _felt_texture: Texture2D
+var _felt_inner_texture: Texture2D
 var _seats: Array[SeatView] = []
 var _stack_piles: Array[ChipPileView] = []
 var _bet_piles: Array[ChipPileView] = []
@@ -76,8 +87,8 @@ static func _pair_bounds(stack_offset: Vector2, bet_offset: Vector2) -> Rect2:
 
 func _ready() -> void:
 	_table = PokerTable.new()
-	_table.small_blind = GameConfig.small_blind
-	_table.big_blind = GameConfig.big_blind
+	_table.small_blind = _level.small_blind
+	_table.big_blind = _level.big_blind
 	_table.npc_think_time = GameConfig.npc_think_time
 	_table.deal_delay = GameConfig.deal_delay
 	_table.showdown_delay = GameConfig.showdown_delay
@@ -92,12 +103,47 @@ func _ready() -> void:
 
 
 func _draw() -> void:
-	UiTheme.draw_world_map(self, _world_map, size)
+	draw_texture(_backdrop_texture, Vector2.ZERO)
 	# A long table between the two NPC columns: wooden rail, felt, lighter inner felt.
 	var table := _layout.table
 	draw_colored_polygon(_chamfered(table, 6), Color("5a3a22"))
-	draw_colored_polygon(_chamfered(table.grow(-3), 5), Color("1f6b3a"))
-	draw_colored_polygon(_chamfered(table.grow(-9), 4), Color("247a43"))
+	_draw_felt(_chamfered(table.grow(-3), 5), _level.felt, _felt_texture)
+	_draw_felt(_chamfered(table.grow(-9), 4), _level.felt_inner, _felt_inner_texture)
+
+
+func _draw_felt(points: PackedVector2Array, color: Color, texture: Texture2D) -> void:
+	if texture == null:
+		draw_colored_polygon(points, color)
+		return
+	var table := _layout.table
+	var uvs := PackedVector2Array()
+	for p in points:
+		uvs.append((p - table.position) / table.size)
+	draw_colored_polygon(points, Color.WHITE, uvs, texture)
+
+
+## Faint grain (the backdrop, and some tables' felt): [param color] with scattered pixels a shade darker or lighter, as a texture of
+## [param size]. A random tile, repeated, so it's quick to build.
+static func _grained_felt(color: Color, size: Vector2i) -> Texture2D:
+	const TILE := 48
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 1
+	var tile := Image.create(TILE, TILE, false, Image.FORMAT_RGBA8)
+	tile.fill(color)
+	var dark := color.darkened(0.12)
+	var light := color.lightened(0.05)
+	for y in TILE:
+		for x in TILE:
+			var roll := rng.randf()
+			if roll < FELT_DARK_SHARE:
+				tile.set_pixel(x, y, dark)
+			elif roll < FELT_DARK_SHARE + FELT_LIGHT_SHARE:
+				tile.set_pixel(x, y, light)
+	var image := Image.create(size.x, size.y, false, Image.FORMAT_RGBA8)
+	for y in range(0, size.y, TILE):
+		for x in range(0, size.x, TILE):
+			image.blit_rect(tile, Rect2i(0, 0, TILE, TILE), Vector2i(x, y))
+	return ImageTexture.create_from_image(image)
 
 
 ## Rectangle with its corners cut at 45 degrees: reads as "rounded" at pixel scale.
@@ -117,6 +163,22 @@ func _build_ui() -> void:
 	var viewport_size := get_viewport_rect().size
 	_layout = PortraitLayout.new(viewport_size, _table.players.size() - 1, insets.x, insets.y)
 	var pot_center := _layout.pot_center
+	_backdrop_texture = _grained_felt(BACKDROP, Vector2i(viewport_size.ceil()))
+	if _level.textured:
+		var felt_size := Vector2i(_layout.table.size.ceil())
+		_felt_texture = _grained_felt(_level.felt, felt_size)
+		_felt_inner_texture = _grained_felt(_level.felt_inner, felt_size)
+
+	# Which table this is, in the header strip above the felt, on the left; lettered like the
+	# players' names.
+	var table_label := Label.new()
+	table_label.text = "TABLE %d" % _level.number
+	table_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	UiTheme.add_at(self, table_label,
+		Vector2(_layout.header.position.x, _layout.header.get_center().y - UiTheme.LINE_HEIGHT / 2.0),
+		Vector2(_layout.header.size.x / 2, UiTheme.LINE_HEIGHT))
+	table_label.add_theme_color_override("font_color", PixelArt.GOLD)
+	table_label.add_theme_font_size_override("font_size", TABLE_LABEL_FONT_SIZE)
 
 	# players[0] is the human (bottom right); opponents fill the edge columns clockwise.
 	var human_portrait: Texture2D = load(GameConfig.player_portrait_path)
@@ -241,6 +303,7 @@ func _build_ui() -> void:
 	UiTheme.add_at(self, _debug_menu, Vector2.ZERO, viewport_size)
 	_debug_menu.give_item.connect(_debug_give_item)
 	_debug_menu.lose_heart.connect(_debug_lose_heart)
+	_debug_menu.win_table.connect(func() -> void: _show_game_over(_table.players[0]))
 
 
 func _build_action_bar() -> void:
@@ -678,11 +741,20 @@ func _pop_pot_label() -> void:
 		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
 
 
+## End of the game: a modal over the table. Winning it offers the next table; going bust
+## offers this table again.
 func _show_game_over(winner: PokerPlayer) -> void:
 	_action_bar.visible = false
+	var modal := Control.new()
+	modal.z_index = DebugMenu.MODAL_Z
+	UiTheme.add_at(self, modal, Vector2.ZERO, get_viewport_rect().size)
+	var dim := ColorRect.new()
+	dim.color = Color(0, 0, 0, 0.6)
+	dim.set_anchors_preset(PRESET_FULL_RECT)
+	modal.add_child(dim)
 	var center := CenterContainer.new()
 	center.set_anchors_preset(PRESET_FULL_RECT)
-	add_child(center)
+	modal.add_child(center)
 	var panel := PanelContainer.new()
 	center.add_child(panel)
 	var box := VBoxContainer.new()
@@ -701,9 +773,13 @@ func _show_game_over(winner: PokerPlayer) -> void:
 		else "%s leads with $%d." % [winner.display_name, winner.chips]
 	detail.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	box.add_child(detail)
-	var again := _new_button("PLAY AGAIN")
-	again.pressed.connect(func() -> void: get_tree().reload_current_scene())
-	box.add_child(again)
+	var next := _new_button("ASCEND TO TABLE %d" % (_level.number + 1) if winner.is_human() else "PLAY AGAIN")
+	next.pressed.connect(func() -> void:
+		if winner.is_human():
+			GameConfig.table_number = _level.number + 1
+		get_tree().reload_current_scene())
+	box.add_child(next)
+	next.grab_focus()
 	var menu := _new_button("MAIN MENU")
 	menu.pressed.connect(func() -> void: get_tree().change_scene_to_file("res://scenes/main_menu.tscn"))
 	box.add_child(menu)

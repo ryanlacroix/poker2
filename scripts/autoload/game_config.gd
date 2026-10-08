@@ -15,11 +15,10 @@ const OPPONENT_PATHS: Array[String] = [
 var player_name := "YOU"
 var player_portrait_path := "res://assets/portraits/you.png"
 var player_injured_portrait_path := "res://assets/portraits/you_injured.png"
-var starting_chips := 1000
+## The table the player is at (1 = the first); see [TableLevel]. Winning it ascends them.
+var table_number := 1
 ## Hearts each player starts with (shown under their name).
 var starting_hearts := 3
-var small_blind := 10
-var big_blind := 20
 var npc_think_time := 0.8
 var deal_delay := 0.4
 var showdown_delay := 2.5
@@ -30,7 +29,12 @@ func _enter_tree() -> void:
 	get_tree().root.theme = UiTheme.build()
 
 
+func table_level() -> TableLevel:
+	return TableLevel.new(table_number)
+
+
 func create_players() -> Array[PokerPlayer]:
+	var starting_chips := table_level().starting_chips
 	var players: Array[PokerPlayer] = [PokerPlayer.new(player_name, starting_chips, null, starting_hearts)]
 	for path in OPPONENT_PATHS:
 		var brain: NpcBrain = load(path)
