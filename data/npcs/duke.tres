@@ -1,16 +1,16 @@
 [gd_resource type="Resource" script_class="NpcBrain" format=3]
 
-[ext_resource type="Script" path="res://scripts/ai/NpcBrain.cs" id="1"]
+[ext_resource type="Script" path="res://scripts/ai/npc_brain.gd" id="1"]
 [ext_resource type="Texture2D" path="res://assets/portraits/duke.png" id="2"]
 [ext_resource type="Texture2D" path="res://assets/portraits/duke_injured.png" id="3"]
 
 [resource]
 script = ExtResource("1")
-DisplayName = "DUKE"
-Tightness = 0.1
-Aggression = 1.0
-BluffRate = 0.35
-Simulations = 200
-Randomness = 0.1
-Portrait = ExtResource("2")
-InjuredPortrait = ExtResource("3")
+display_name = "DUKE"
+tightness = 0.1
+aggression = 1.0
+bluff_rate = 0.35
+simulations = 200
+randomness = 0.1
+portrait = ExtResource("2")
+injured_portrait = ExtResource("3")

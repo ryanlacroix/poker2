@@ -2,11 +2,5 @@
 .godot/
 /android/
 
-# .NET build output
-bin/
-obj/
-.mono/
-*.user
-
 # Map generator download cache
 tools/.cache/
