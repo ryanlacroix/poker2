@@ -19,6 +19,7 @@ config/icon="res://icon.svg"
 [autoload]
 
 GameConfig="*res://scripts/autoload/game_config.gd"
+PhoneFrame="*res://scripts/autoload/phone_frame.gd"
 
 [display]
 
