@@ -2,9 +2,10 @@ class_name PortraitLayout
 extends RefCounted
 ## Where everything goes on a portrait (phone) screen. Top: NPCs stacked closely in a column down
 ## each screen edge, with their chips beside them. Below: the board, drawn large. Bottom: the
-## human's seat in the bottom-right corner, with the action panel beside it. Designed on a 360x640 base; extra height goes
-## to the board area, extra width widens the table. Safe-area insets keep clear of notches and
-## gesture bars.
+## human's seat in the bottom-right corner, with the action panel beside it. Designed on a 360x672 base
+## (everything fits in 360x648; the rest is breathing room). Extra height opens a gap above the
+## NPCs (up to a limit) and around the board; extra width widens the table. Safe-area insets keep
+## clear of notches and gesture bars.
 
 ## A seat (top-left corner + style) and where its stack/bet piles sit on the table.
 class SeatSlot:
@@ -20,11 +21,18 @@ class SeatSlot:
 		vertical_piles = p_vertical_piles
 
 
-const BASE_SIZE := Vector2(360, 640)
+const BASE_SIZE := Vector2(360, 672)
 
 const MAX_OPPONENTS := 6
 const MARGIN := 4.0
 const ROW_GAP := 3.0
+## Space between the top of the screen and the NPC rows (the DEBUG button sits between the
+## columns, not above them).
+const TOP_MARGIN := 10.0
+## Share of any spare height that goes above the NPC rows (the rest goes around the board),
+## and the most it can add there.
+const SPARE_TOP_SHARE := 0.3
+const MAX_SPARE_TOP := 20.0
 
 # Action panel: big, well-spaced touch targets (FOLD, CALL, raise slider, RAISE).
 const ACTION_PADDING := 6.0
@@ -66,7 +74,13 @@ func _init(viewport: Vector2, opponent_count: int, safe_top := 0.0, safe_bottom 
 
 	var compact := SeatView.COMPACT_SIZE
 	var wide := SeatView.WIDE_SIZE
-	var top := safe_top + 2 # the DEBUG button sits between the columns, not above them
+	var card := CardView.CARD_SIZE * BOARD_CARD_SCALE
+	var block_height := card.y + 6 + NEXT_HAND_SIZE.y # the board, with the pot / NEXT HAND under it
+	# Height everything needs with nothing to spare: the NPC rows, the board block (with room for
+	# winning cards to lift above it) and the action panel at the bottom.
+	var needed := TOP_MARGIN + compact.y * 3 + ROW_GAP * 2 + 6 + block_height + 4 + ACTION_PANEL_HEIGHT + MARGIN
+	var spare := maxf(0, viewport.y - safe_top - safe_bottom - needed)
+	var top := safe_top + TOP_MARGIN + floorf(minf(spare * SPARE_TOP_SHARE, MAX_SPARE_TOP))
 	var row_y: Array[float] = [top, top + compact.y + ROW_GAP, top + (compact.y + ROW_GAP) * 2]
 	var npc_bottom := row_y[2] + compact.y
 
@@ -93,7 +107,9 @@ func _init(viewport: Vector2, opponent_count: int, safe_top := 0.0, safe_bottom 
 	var bottom := viewport.y - safe_bottom - MARGIN
 	var human_seat := Vector2(viewport.x - MARGIN - wide.x, bottom - wide.y)
 	action_bar = Rect2(MARGIN, bottom - ACTION_PANEL_HEIGHT, viewport.x - wide.x - MARGIN * 3, ACTION_PANEL_HEIGHT)
-	table = Rect2(2, top - 2, viewport.x - 4, human_seat.y - 2 - (top - 2))
+	# The felt reaches up to cover half of the gap above the NPC rows.
+	var table_top := floorf(safe_top + (top - 2 - safe_top) / 2)
+	table = Rect2(2, table_top, viewport.x - 4, human_seat.y - 2 - table_top)
 
 	var pair_bounds := TableScene.horizontal_pile_unit_bounds()
 	var human_piles := Vector2(viewport.x - MARGIN - 4 - pair_bounds.end.x, table.end.y - 2 - pair_bounds.end.y)
@@ -101,11 +117,9 @@ func _init(viewport: Vector2, opponent_count: int, safe_top := 0.0, safe_bottom 
 
 	# Large board centred in the space between the NPCs and the bottom, with the
 	# pot / NEXT HAND button under it, kept clear of the action panel and the human's piles.
-	var card := CardView.CARD_SIZE * BOARD_CARD_SCALE
 	var board_width := card.x * 5 + BOARD_CARD_GAP * 4
 	var area_top := npc_bottom + 6 # room for winning cards to lift
 	var area_bottom := minf(action_bar.position.y, human_piles.y + pair_bounds.position.y) - 4
-	var block_height := card.y + 6 + NEXT_HAND_SIZE.y
 	var board_y := floorf(area_top + maxf(0, area_bottom - area_top - block_height) / 2)
 	board_origin = Vector2(floorf((viewport.x - board_width) / 2), board_y)
 	pot_center = Vector2(floorf(viewport.x / 2), board_y + card.y + 6 + NEXT_HAND_SIZE.y / 2)
