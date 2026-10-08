@@ -20,6 +20,10 @@ const POT_POP_SIZE := POT_FONT_SIZE + 6
 const BANNER_Z := SeatView.DARKEN_Z + 2
 ## The "TABLE N" label: a little bigger than the players' names, to fill the header strip.
 const TABLE_LABEL_FONT_SIZE := 18
+## Offset (down and right) of the hard black shadow under the table's name.
+const TABLE_NAME_SHADOW_OFFSET := 2
+## How much thicker the table's name is drawn (the UI font has no bold of its own).
+const TABLE_NAME_EMBOLDEN := 0.8
 ## Dark blue felt behind the table, filling the screen.
 const BACKDROP := Color("16203a")
 ## Share of the felt's pixels drawn a shade darker / lighter on a textured felt.
@@ -170,15 +174,24 @@ func _build_ui() -> void:
 		_felt_inner_texture = _grained_felt(_level.felt_inner, felt_size)
 
 	# Which table this is, in the header strip above the felt, on the left; lettered like the
-	# players' names.
-	var table_label := Label.new()
-	table_label.text = "TABLE %d" % _level.number
-	table_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	UiTheme.add_at(self, table_label,
+	# players' names, with the table's name bold over a hard black shadow.
+	var header_row := HBoxContainer.new()
+	header_row.add_theme_constant_override("separation", 0)
+	UiTheme.add_at(self, header_row,
 		Vector2(_layout.header.position.x, _layout.header.get_center().y - UiTheme.LINE_HEIGHT / 2.0),
-		Vector2(_layout.header.size.x / 2, UiTheme.LINE_HEIGHT))
-	table_label.add_theme_color_override("font_color", PixelArt.GOLD)
-	table_label.add_theme_font_size_override("font_size", TABLE_LABEL_FONT_SIZE)
+		Vector2(_layout.header.size.x, UiTheme.LINE_HEIGHT))
+	_add_header_text(header_row, "TABLE %d: " % _level.number, PixelArt.GOLD)
+	var table_name := _add_header_text(header_row, _level.name, PixelArt.GOLD)
+	table_name.size_flags_horizontal = SIZE_EXPAND_FILL
+	table_name.clip_text = true
+	var bold := FontVariation.new()
+	bold.base_font = table_name.get_theme_default_font()
+	bold.variation_embolden = TABLE_NAME_EMBOLDEN
+	table_name.add_theme_font_override("font", bold)
+	table_name.add_theme_color_override("font_shadow_color", Color.BLACK)
+	table_name.add_theme_constant_override("shadow_offset_x", TABLE_NAME_SHADOW_OFFSET)
+	table_name.add_theme_constant_override("shadow_offset_y", TABLE_NAME_SHADOW_OFFSET)
+	table_name.add_theme_constant_override("shadow_outline_size", 0)
 
 	# players[0] is the human (bottom right); opponents fill the edge columns clockwise.
 	var human_portrait: Texture2D = load(GameConfig.player_portrait_path)
@@ -304,6 +317,16 @@ func _build_ui() -> void:
 	_debug_menu.give_item.connect(_debug_give_item)
 	_debug_menu.lose_heart.connect(_debug_lose_heart)
 	_debug_menu.win_table.connect(func() -> void: _show_game_over(_table.players[0]))
+
+
+func _add_header_text(row: HBoxContainer, text: String, color: Color) -> Label:
+	var label := Label.new()
+	label.text = text
+	label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	label.add_theme_color_override("font_color", color)
+	label.add_theme_font_size_override("font_size", TABLE_LABEL_FONT_SIZE)
+	row.add_child(label)
+	return label
 
 
 func _build_action_bar() -> void:
