@@ -25,6 +25,8 @@ signal waiting_for_item_phase
 signal item_turn_started(player: PokerPlayer, can_use: bool)
 ## A gun was fired.
 signal shot(shooter: PokerPlayer, target: PokerPlayer, result: Item.ShotResult)
+## A stimpak was used up, and whether it won back a heart (it does nothing at full health).
+signal stimpak_used(player: PokerPlayer, healed: bool)
 signal item_dropped(player: PokerPlayer, item: Item.Kind)
 signal item_phase_finished
 ## Emitted between hands when [member wait_for_next_hand] is on; call [method continue_to_next_hand].
@@ -40,7 +42,7 @@ var deal_delay := 0.4
 var npc_think_time := 0.8
 var showdown_delay := 2.0
 var between_hands_delay := 1.5
-## Pause after a gunshot in the item phase, so it can be seen before the next turn.
+## Pause after a gunshot or a stimpak in the item phase, so it can be seen before the next turn.
 var shot_delay := 0.9
 ## 0 = unlimited.
 var max_hands := 0
@@ -131,6 +133,18 @@ func remove_heart(target: PokerPlayer, taker: PokerPlayer) -> bool:
 		target.chips = 0
 	chips_changed.emit()
 	return eliminated
+
+
+## [param p] uses up their stimpak (call between hands), winning back a heart if they've lost
+## any. Returns true if it healed them.
+func use_stimpak(p: PokerPlayer) -> bool:
+	if p.item == Item.Kind.STIMPAK:
+		p.item = Item.NONE
+	var healed := p.is_hurt()
+	if healed:
+		p.hearts += 1
+	chips_changed.emit()
+	return healed
 
 
 ## Still playing: has chips and hearts left.
@@ -431,6 +445,9 @@ func _apply_item_decision(p: PokerPlayer, item: Item.Kind, can_use: bool, decisi
 			if can_use and item == Item.Kind.GUN and target != null and target != p and in_game(target):
 				var result := shoot(p, target)
 				shot.emit(p, target, result)
+				await _wait(shot_delay)
+			elif can_use and item == Item.Kind.STIMPAK:
+				stimpak_used.emit(p, use_stimpak(p))
 				await _wait(shot_delay)
 		Item.Action.DROP:
 			p.item = Item.NONE

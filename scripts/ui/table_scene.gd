@@ -15,6 +15,9 @@ const CHIP_CHANGE_RISE := 10.0
 const CHIP_CHANGE_FONT_SIZE := UiTheme.FONT_SIZE + 4
 const POT_FONT_SIZE := UiTheme.FONT_SIZE + 4
 const POT_POP_SIZE := POT_FONT_SIZE + 6
+## Z index of the winning-hand banner and item notices: above the portraits, the gun and the
+## chip-change labels (all at SeatView.DARKEN_Z + 1), below the DEBUG popup.
+const BANNER_Z := SeatView.DARKEN_Z + 2
 
 var _table: PokerTable
 var _layout: PortraitLayout
@@ -222,11 +225,13 @@ func _build_ui() -> void:
 
 	# Added last so it draws over everything else.
 	_win_banner = WinBanner.new()
+	_win_banner.z_index = BANNER_Z
 	_win_banner.max_bottom = _layout.board_origin.y - 4
 	UiTheme.add_at(self, _win_banner, Vector2.ZERO, viewport_size)
 	# Item notices run across the screen over the middle of the board.
 	var board_mid := _layout.board_origin.y + CardView.CARD_SIZE.y * PortraitLayout.BOARD_CARD_SCALE / 2
 	_notices = NoticeBanner.new()
+	_notices.z_index = BANNER_Z
 	UiTheme.add_at(self, _notices,
 		Vector2(0, floorf(board_mid - NoticeBanner.STRIP_HEIGHT / 2)),
 		Vector2(viewport_size.x, NoticeBanner.STRIP_HEIGHT))
@@ -235,6 +240,7 @@ func _build_ui() -> void:
 	_debug_menu = DebugMenu.new()
 	UiTheme.add_at(self, _debug_menu, Vector2.ZERO, viewport_size)
 	_debug_menu.give_item.connect(_debug_give_item)
+	_debug_menu.lose_heart.connect(_debug_lose_heart)
 
 
 func _build_action_bar() -> void:
@@ -418,6 +424,14 @@ func _connect_table() -> void:
 			_human_item_turn = true
 			_show_item_buttons(can_use))
 	_table.shot.connect(_on_shot)
+	_table.stimpak_used.connect(func(player: PokerPlayer, healed: bool) -> void:
+		var seat := _seats[player.seat]
+		if healed:
+			seat.set_status("+1 HEART", PixelArt.HEAL_GREEN)
+			seat.flash_heal()
+		else:
+			seat.set_status("WASTED", PixelArt.PAPER)
+		seat.refresh())
 	_table.item_dropped.connect(func(player: PokerPlayer, item: Item.Kind) -> void:
 		_seats[player.seat].set_status("DROPPED %s" % Item.display_name(item), PixelArt.PAPER)
 		_seats[player.seat].refresh())
@@ -488,12 +502,25 @@ func _debug_give_item(item: Item.Kind) -> void:
 		_show_item_buttons(_table.can_use_item(human))
 
 
+## Debug: takes one of the human's hearts (so a stimpak has something to heal), but never the
+## last one.
+func _debug_lose_heart() -> void:
+	var human := _table.players[0]
+	if human.hearts <= 1:
+		return
+	human.hearts -= 1
+	_seats[0].flash_hit()
+	_seats[0].refresh()
+
+
 func _use_item() -> void:
 	match _table.players[0].item:
 		Item.Kind.GUN:
 			_hide_item_buttons()
 			var targets := _table.gun_targets(_table.players[0])
 			_enter_target_mode(_seats.filter(func(s: SeatView) -> bool: return s.player in targets))
+		Item.Kind.STIMPAK:
+			_submit_item_decision(ItemDecision.new(Item.Action.USE))
 
 
 func _enter_target_mode(targets: Array[SeatView]) -> void:

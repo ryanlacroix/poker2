@@ -25,6 +25,8 @@ func _test_evaluator() -> void:
 	_check(HandEvaluator.compare(_score("Ah Ad Kc 7s 2d 3h 4s"), _score("Ah Ad Qc 7s 2d 3h 4s")) > 0, "pair kicker")
 	_test_remove_heart()
 	_test_shield()
+	_test_stimpak()
+	_test_stimpak_phase()
 	_test_items()
 	_test_item_phase()
 	_test_item_odds()
@@ -89,11 +91,76 @@ func _play_hands(hands: int, item_chance: float, players: Array[PokerPlayer], do
 func _test_item_odds() -> void:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 1
-	var shields := 0
+	var counts := {}
 	for i in 40_000:
-		if Item.random(rng) == Item.Kind.SHIELD:
-			shields += 1
-	_check(shields > 9_000 and shields < 11_000, "a quarter of item pickups are shields (got %d of 40000)" % shields)
+		var item := Item.random(rng)
+		counts[item] = counts.get(item, 0) + 1
+	# Weights 3 : 1 : 1, so 24000 : 8000 : 8000 expected.
+	for item: Item.Kind in [Item.Kind.GUN, Item.Kind.SHIELD, Item.Kind.STIMPAK]:
+		var want := 40_000 * Item.weight(item) / 5
+		var got: int = counts.get(item, 0)
+		_check(absi(got - want) < 1_000, "%s pickups match their weight (got %d of 40000, want ~%d)" % [Item.display_name(item), got, want])
+
+
+func _test_stimpak() -> void:
+	var table := PokerTable.new()
+	var hurt := PokerPlayer.new("HURT", 1000, NpcBrain.new())
+	var healthy := PokerPlayer.new("HEALTHY", 1000, NpcBrain.new())
+	table.setup([hurt, healthy])
+	_check(Item.can_be_used(Item.Kind.STIMPAK), "a stimpak can be used")
+
+	hurt.hearts = 1
+	hurt.item = Item.Kind.STIMPAK
+	_check(table.use_stimpak(hurt) and hurt.hearts == 2, "a stimpak wins back one heart")
+	_check(not hurt.has_item(), "using a stimpak uses it up")
+	hurt.item = Item.Kind.STIMPAK
+	_check(table.use_stimpak(hurt) and hurt.hearts == 3 and not hurt.has_item(), "a second stimpak heals back to full")
+
+	healthy.item = Item.Kind.STIMPAK
+	_check(not table.use_stimpak(healthy) and healthy.hearts == 3, "a stimpak does nothing at full health")
+	_check(not healthy.has_item(), "a stimpak is used up even at full health")
+
+	# Like a gun, it's only ready from the end of the hand after it was picked up.
+	healthy.item = Item.Kind.STIMPAK
+	healthy.item_gained_on_hand = 4
+	table.hand_number = 4
+	_check(not table.can_use_item(healthy), "a new stimpak can't be used at the end of the hand it was picked up")
+	table.hand_number = 5
+	_check(table.can_use_item(healthy), "a stimpak can be used at the end of the next hand")
+
+	# NPCs save a stimpak until they're hurt.
+	var brain := NpcBrain.new()
+	var no_targets: Array[PokerPlayer] = []
+	healthy.hearts = 3
+	_check(brain.decide_item(healthy, true, no_targets).action == Item.Action.KEEP, "an NPC at full health keeps their stimpak")
+	healthy.hearts = 2
+	_check(brain.decide_item(healthy, true, no_targets).action == Item.Action.USE, "a hurt NPC uses a ready stimpak")
+	_check(brain.decide_item(healthy, false, no_targets).action == Item.Action.KEEP, "an NPC can't use a stimpak before it's ready")
+	table.free()
+
+
+func _test_stimpak_phase() -> void:
+	# A hurt NPC with a ready stimpak uses it in the item phase after a hand (unless they folded).
+	var brain := NpcBrain.new()
+	brain.simulations = 20
+	var players: Array[PokerPlayer] = [
+		PokerPlayer.new("A", 100_000, brain), PokerPlayer.new("B", 1000, brain), PokerPlayer.new("C", 1000, brain),
+	]
+	players[0].hearts = 2
+	players[0].item = Item.Kind.STIMPAK
+	players[0].item_gained_on_hand = -1
+	var seen := {"healed": null, "folded": null}
+	_play_hands(2, 0, players, func(_table: PokerTable) -> void:
+		if seen.folded == false:
+			_check(seen.healed == true and players[0].hearts == 3, "a hurt NPC heals with their stimpak in the item phase")
+			_check(not players[0].has_item(), "the NPC's stimpak is used up")
+		elif seen.folded == true:
+			_check(seen.healed == null and players[0].item == Item.Kind.STIMPAK, "a player who folded doesn't use their stimpak"),
+		func(table: PokerTable) -> void:
+			table.stimpak_used.connect(func(_p: PokerPlayer, healed: bool) -> void: seen.healed = healed)
+			table.item_phase_finished.connect(func() -> void:
+				if seen.folded == null:
+					seen.folded = players[0].folded))
 
 
 func _test_item_phase() -> void:
@@ -181,11 +248,13 @@ func _run_simulation() -> void:
 		_check(total == expected, "chips conserved after hand %d (%d != %d)" % [table.hand_number, total, expected])
 		_check(table.players.all(func(p: PokerPlayer) -> bool: return p.chips >= 0), "no negative stacks"))
 	# Lambdas capture locals by value, so the counters live in here.
-	var counts := {"shots": 0, "pauses": 0}
+	var counts := {"shots": 0, "stimpaks": 0, "pauses": 0}
 	# Stand in for the view: start item turns straight away, and count the shots fired.
 	table.waiting_for_item_phase.connect(table.begin_item_phase)
 	table.shot.connect(func(_s: PokerPlayer, _t: PokerPlayer, _result: Item.ShotResult) -> void:
 		counts.shots += 1)
+	table.stimpak_used.connect(func(_p: PokerPlayer, _healed: bool) -> void:
+		counts.stimpaks += 1)
 	# Stand in for the "next hand" button.
 	table.waiting_for_next_hand.connect(func() -> void:
 		counts.pauses += 1
@@ -193,7 +262,7 @@ func _run_simulation() -> void:
 	table.game_over.connect(func(winner: PokerPlayer) -> void:
 		# Every hand but the game-ending one should pause for the button.
 		_check(counts.pauses == table.hand_number - 1, "paused %d times over %d hands" % [counts.pauses, table.hand_number])
-		print("Simulated %d hands (%d gunshots), leader %s with %d" % [table.hand_number, counts.shots, winner.display_name, winner.chips])
+		print("Simulated %d hands (%d gunshots, %d stimpaks), leader %s with %d" % [table.hand_number, counts.shots, counts.stimpaks, winner.display_name, winner.chips])
 		print("ALL TESTS PASSED" if _failures == 0 else "%d FAILURE(S)" % _failures)
 		get_tree().quit(_failures))
 	table.start_game()

@@ -8,6 +8,8 @@ var seat := 0
 var chips := 0
 ## Hearts shown under the player's name.
 var hearts := 3
+## Hearts they started with: a stimpak can't heal them past this.
+var max_hearts := 3
 ## The one item this player carries ([enum Item.Kind]), or [constant Item.NONE].
 var item: int = Item.NONE
 ## Number of the hand at whose end [member item] was picked up.
@@ -30,10 +32,16 @@ func _init(p_name: String, p_chips: int, p_brain: NpcBrain = null, p_hearts := 3
 	chips = p_chips
 	brain = p_brain
 	hearts = p_hearts
+	max_hearts = p_hearts
 
 
 func is_human() -> bool:
 	return brain == null
+
+
+## Has lost at least one heart (so a stimpak would help).
+func is_hurt() -> bool:
+	return hearts < max_hearts
 
 
 func has_item() -> bool:

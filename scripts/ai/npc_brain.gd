@@ -62,8 +62,11 @@ func _raise(ctx: DecisionContext, equity: float) -> Decision:
 
 
 ## Item phase: fire a ready gun (more likely the more aggressive), and timid players who
-## won't fire it drop it to try for a shield instead. A shield is always worth keeping.
+## won't fire it drop it to try for a shield instead. A shield is always worth keeping, and a
+## stimpak is saved until it would win back a heart.
 func decide_item(me: PokerPlayer, can_use: bool, targets: Array[PokerPlayer]) -> ItemDecision:
+	if me.item == Item.Kind.STIMPAK:
+		return ItemDecision.new(Item.Action.USE if can_use and me.is_hurt() else Item.Action.KEEP)
 	if me.item != Item.Kind.GUN or not can_use or targets.is_empty():
 		return ItemDecision.new(Item.Action.KEEP)
 	if randf() < 0.5 + 0.5 * aggression:

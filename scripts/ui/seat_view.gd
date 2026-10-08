@@ -42,6 +42,7 @@ var _reveal := false
 var _is_winner := false
 var _is_target := false
 var _hit_at := -1.0
+var _flash_color := PixelArt.HEART_RED
 
 
 static func size_for(p_style: Style) -> Vector2:
@@ -180,6 +181,16 @@ func set_targetable(value: bool) -> void:
 
 ## Brief red flash on the portrait after being shot.
 func flash_hit() -> void:
+	_flash(PixelArt.HEART_RED)
+
+
+## Brief green flash on the portrait after a stimpak wins back a heart.
+func flash_heal() -> void:
+	_flash(PixelArt.HEAL_GREEN)
+
+
+func _flash(color: Color) -> void:
+	_flash_color = color
 	_hit_at = Time.get_ticks_msec() / 1000.0
 	_update_processing()
 
@@ -282,7 +293,7 @@ func _draw_portrait(c: CanvasItem) -> void:
 	if _hit_active():
 		var k := 1.0 - (Time.get_ticks_msec() / 1000.0 - _hit_at) / HIT_SECONDS
 		var blink := int(Time.get_ticks_msec() / 80.0) % 2 == 0
-		c.draw_rect(frame, Color(Color.WHITE if blink else PixelArt.HEART_RED, 0.65 * k))
+		c.draw_rect(frame, Color(Color.WHITE if blink else _flash_color, 0.65 * k))
 
 
 ## The carried item, as a small icon on a dark plate in the portrait's bottom corner
@@ -299,6 +310,9 @@ func _draw_item(c: CanvasItem, frame: Rect2) -> void:
 		Item.Kind.SHIELD:
 			icon = PixelArt.SHIELD_ICON
 			colors = PixelArt.SHIELD_COLORS
+		Item.Kind.STIMPAK:
+			icon = PixelArt.STIMPAK_ICON
+			colors = PixelArt.STIMPAK_COLORS
 		_:
 			assert(false, "unknown item %d" % player.item)
 			return

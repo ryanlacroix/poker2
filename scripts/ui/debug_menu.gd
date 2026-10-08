@@ -5,6 +5,8 @@ extends Control
 
 ## Emitted when a "give" action is picked; the menu closes itself.
 signal give_item(item: Item.Kind)
+## Emitted when LOSE A HEART is picked; the menu closes itself.
+signal lose_heart
 
 ## Draws over everything on the table, including portraits and the gun.
 const MODAL_Z := 10
@@ -40,6 +42,10 @@ func _ready() -> void:
 	box.add_child(title)
 	_add_button(box, "GIVE GUN", _give.bind(Item.Kind.GUN))
 	_add_button(box, "GIVE SHIELD", _give.bind(Item.Kind.SHIELD))
+	_add_button(box, "GIVE STIMPAK", _give.bind(Item.Kind.STIMPAK))
+	_add_button(box, "LOSE A HEART", func() -> void:
+		hide()
+		lose_heart.emit())
 	_add_button(box, "CLOSE", hide)
 
 

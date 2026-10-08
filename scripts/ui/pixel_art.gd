@@ -264,6 +264,35 @@ const SHIELD_COLORS := {
 	"R": RED,
 }
 
+# Stimpak item icon (17x10): a syringe of red fluid, needle to the left, with a pale outline
+# round the body so it stands out on the dark item plate.
+const STIMPAK_ICON: Array[String] = [
+	"...........OO....",
+	"....OOOOOOOKKOOO.",
+	"...OKKKKKKKKKKKKO",
+	"...OKWWLLLLKGGGKO",
+	"...OKrrrrrrKGGGKO",
+	"NNNNKRRRRRRKGGGKO",
+	"...OKRRRRRRKGGGKO",
+	"...OKKKKKKKKKKKKO",
+	"....OOOOOOOKKOOO.",
+	"...........OO....",
+]
+
+const STIMPAK_COLORS := {
+	"K": INK,
+	"O": PAPER,
+	"N": Color("e8eef6"),
+	"L": Color("d4dce8"),
+	"W": Color("ffffff"),
+	"r": Color("ff7a80"),
+	"R": Color("e03848"),
+	"G": Color("c8d2de"),
+}
+
+## Flash over a portrait when a stimpak wins back a heart.
+const HEAL_GREEN := Color("5ad070")
+
 # Pot of gold (12x12): a dark cauldron heaped with coins; shown in place of the word "POT".
 const POT_OF_GOLD: Array[String] = [
 	"....YYYY....",
