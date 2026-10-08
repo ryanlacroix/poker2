@@ -1,15 +1,15 @@
 [gd_resource type="Resource" script_class="NpcBrain" format=3]
 
-[ext_resource type="Script" path="res://scripts/ai/NpcBrain.cs" id="1"]
+[ext_resource type="Script" path="res://scripts/ai/npc_brain.gd" id="1"]
 [ext_resource type="Texture2D" path="res://assets/portraits/maverick.png" id="2"]
 [ext_resource type="Texture2D" path="res://assets/portraits/maverick_injured.png" id="3"]
 
 [resource]
 script = ExtResource("1")
-DisplayName = "MAVERICK"
-Tightness = 0.2
-Aggression = 0.85
-BluffRate = 0.22
-Simulations = 300
-Portrait = ExtResource("2")
-InjuredPortrait = ExtResource("3")
+display_name = "MAVERICK"
+tightness = 0.2
+aggression = 0.85
+bluff_rate = 0.22
+simulations = 300
+portrait = ExtResource("2")
+injured_portrait = ExtResource("3")
