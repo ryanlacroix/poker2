@@ -18,9 +18,19 @@ const POT_POP_SIZE := POT_FONT_SIZE + 6
 ## Gap between board cards dealt together (the flop) going down.
 const BOARD_DEAL_STAGGER := 0.07
 ## Gap between hole cards going down as they're dealt round the table.
-const HOLE_DEAL_STAGGER := 0.13
+const HOLE_DEAL_STAGGER := 0.15
 ## How long the action bar takes to fade in or out.
 const ACTION_BAR_FADE_SECONDS := 0.1
+# The table's intro before the first deal: a pause, the "Table N" title fading in, held, fading
+# out, then a pause.
+const INTRO_DELAY := 0.5
+const INTRO_FADE_IN_SECONDS := 0.15
+const INTRO_TITLE_SECONDS := 1.5
+const INTRO_FADE_SECONDS := 0.4
+const INTRO_AFTER_DELAY := 0.5
+## The title is drawn this small, then scaled up by [constant INTRO_PIXEL_SCALE] into chunky pixels.
+const INTRO_FONT_SIZE := 16
+const INTRO_PIXEL_SCALE := 3
 ## Z index of the winning-hand banner and item notices: above the portraits, the gun and the
 ## chip-change labels (all at SeatView.DARKEN_Z + 1), below the DEBUG popup.
 const BANNER_Z := SeatView.DARKEN_Z + 2
@@ -113,7 +123,7 @@ func _ready() -> void:
 
 	_build_ui()
 	_connect_table()
-	_table.start_game()
+	_play_intro()
 
 
 func _draw() -> void:
@@ -229,6 +239,7 @@ func _build_ui() -> void:
 		stack.position = slot.pile_center + (STACK_PILE_OFFSET_VERTICAL if slot.vertical_piles else STACK_PILE_OFFSET)
 		stack.show_label = false
 		add_child(stack)
+		stack.amount = player.chips # on the table from the start, before the intro
 		_stack_piles.append(stack)
 		var bet := ChipPileView.new()
 		bet.position = slot.pile_center + (BET_PILE_OFFSET_VERTICAL if slot.vertical_piles else BET_PILE_OFFSET)
@@ -328,6 +339,35 @@ func _build_ui() -> void:
 	_debug_menu.give_item.connect(_debug_give_item)
 	_debug_menu.lose_heart.connect(_debug_lose_heart)
 	_debug_menu.win_table.connect(func() -> void: _show_game_over(_table.players[0]))
+
+
+## Before the first deal: a pause, then a big "Table N" title that fades in and away, then a short pause
+## and the game starts. Run by a tween on this scene, so it stops if the scene is left.
+func _play_intro() -> void:
+	var title := Label.new()
+	title.text = "Table %d" % _level.number
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	title.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	title.add_theme_font_size_override("font_size", INTRO_FONT_SIZE)
+	title.add_theme_color_override("font_color", Color.WHITE)
+	title.add_theme_color_override("font_shadow_color", Color.BLACK)
+	title.add_theme_constant_override("shadow_offset_x", 1)
+	title.add_theme_constant_override("shadow_offset_y", 1)
+	title.mouse_filter = MOUSE_FILTER_IGNORE
+	title.z_index = BANNER_Z
+	title.modulate.a = 0
+	# Covers the screen once scaled up, so the title sits in its centre.
+	UiTheme.add_at(self, title, Vector2.ZERO, get_viewport_rect().size / INTRO_PIXEL_SCALE)
+	title.scale = Vector2.ONE * INTRO_PIXEL_SCALE
+
+	var tween := create_tween()
+	tween.tween_interval(INTRO_DELAY)
+	tween.tween_property(title, "modulate:a", 1.0, INTRO_FADE_IN_SECONDS)
+	tween.tween_interval(INTRO_TITLE_SECONDS)
+	tween.tween_property(title, "modulate:a", 0.0, INTRO_FADE_SECONDS)
+	tween.tween_callback(title.queue_free)
+	tween.tween_interval(INTRO_AFTER_DELAY)
+	tween.tween_callback(_table.start_game)
 
 
 func _add_header_text(row: HBoxContainer, text: String, color: Color) -> Label:

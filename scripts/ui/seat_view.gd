@@ -17,10 +17,17 @@ const PORTRAIT_SIZE := Vector2(48, 48)
 const WIDE_CARD_SCALE := 2
 const STATUS_COLOR := Color("9fe0a0")
 const HIT_SECONDS := 0.6
+## How long the gold your-turn outline takes to fade in or out.
+const ACTIVE_FADE_SECONDS := 0.1
 
 ## Z index of the shot's screen-darkening overlay. Portraits (and the gun) draw above it;
 ## everything else stays below.
 const DARKEN_Z := 1
+## Z index of the gold your-turn outline: above everything on the table (the banners and notices
+## are at TableScene.BANNER_Z, just below), except the human's hole cards.
+const OUTLINE_Z := DARKEN_Z + 3
+## Z index of the human's hole cards, the only thing over the outline.
+const HUMAN_CARDS_Z := OUTLINE_Z + 1
 
 # Set these before adding the seat to the tree.
 var player: PokerPlayer
@@ -36,8 +43,13 @@ var _name_label := Label.new()
 var _chips_label := Label.new()
 var _status_label := Label.new()
 var _portrait_layer := Control.new()
+## The gold your-turn outline, on top of every seat and everything in them.
+var _outline_layer := Control.new()
 var _is_dealer := false
 var _is_active := false
+## The your-turn outline's opacity, faded toward 1 or 0 as the turn comes and goes.
+var _active_alpha := 0.0
+var _active_tween: Tween
 var _reveal := false
 var _is_winner := false
 var _is_target := false
@@ -103,6 +115,9 @@ func _ready() -> void:
 		var view := CardView.new()
 		view.pixel_scale = card_scale
 		view.position = cards_origin + Vector2(i * (CardView.CARD_SIZE.x * card_scale + 2), 0)
+		if player.is_human():
+			view.resting_z = HUMAN_CARDS_Z
+			view.z_index = HUMAN_CARDS_Z
 		add_child(view)
 		_cards.append(view)
 	var labels_y := 52.0 if _is_compact() else _wide_labels_y()
@@ -122,6 +137,10 @@ func _ready() -> void:
 	_portrait_layer.z_index = DARKEN_Z + 1
 	_portrait_layer.draw.connect(func() -> void: _draw_portrait(_portrait_layer))
 	add_child(_portrait_layer)
+	_outline_layer.mouse_filter = MOUSE_FILTER_IGNORE
+	_outline_layer.z_index = OUTLINE_Z
+	_outline_layer.draw.connect(_draw_active_outline)
+	add_child(_outline_layer)
 	refresh()
 
 
@@ -168,8 +187,15 @@ func set_dealer(value: bool) -> void:
 
 
 func set_active(value: bool) -> void:
+	if value == _is_active:
+		return
 	_is_active = value
-	queue_redraw()
+	if _active_tween:
+		_active_tween.kill()
+	_active_tween = create_tween()
+	_active_tween.tween_method(func(alpha: float) -> void:
+		_active_alpha = alpha
+		_outline_layer.queue_redraw(), _active_alpha, 1.0 if value else 0.0, ACTIVE_FADE_SECONDS)
 
 
 func set_reveal(value: bool) -> void:
@@ -245,8 +271,6 @@ func _process(_delta: float) -> void:
 func _draw() -> void:
 	# Dark backing so labels stay readable over any part of the map.
 	draw_rect(Rect2(Vector2(-1, -1), seat_size() + Vector2(2, 2)), Color(0.05, 0.06, 0.11, 0.78))
-	if _is_active:
-		draw_rect(Rect2(Vector2(-2, -2), seat_size() + Vector2(4, 4)), PixelArt.GOLD, false, 1)
 	_portrait_layer.queue_redraw()
 	_draw_hearts()
 	if _is_dealer:
@@ -261,6 +285,15 @@ func _draw() -> void:
 
 
 ## Pixel hearts (2x) on the line under the name: full for lives left, empty for lost.
+## Two pixels thick, just outside the seat's backing.
+func _draw_active_outline() -> void:
+	if _active_alpha <= 0:
+		return
+	var outline := Color(PixelArt.GOLD, _active_alpha)
+	_outline_layer.draw_rect(Rect2(Vector2(-2, -2), seat_size() + Vector2(4, 4)), outline, false, 1)
+	_outline_layer.draw_rect(Rect2(Vector2(-3, -3), seat_size() + Vector2(6, 6)), outline, false, 1)
+
+
 func _draw_hearts() -> void:
 	const PX := 2
 	const SPACING := 2

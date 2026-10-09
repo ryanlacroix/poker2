@@ -13,7 +13,8 @@ const POP_SECONDS := 0.15
 const FADE_SECONDS := 0.2
 ## How long a dealt card takes to fly to its place (see [method deal_card]).
 const FLY_SECONDS := 0.25
-## Z index while flying: above the portraits, so a card never passes under one.
+## Z index while flying: above the portraits, so a card never passes under one. A card that
+## rests higher (see [member resting_z]) keeps its own.
 const FLY_Z := SeatView.DARKEN_Z + 2
 
 var show_empty_slot := false
@@ -21,6 +22,8 @@ var show_empty_slot := false
 var pixel_scale := 1
 ## The card shown, if any. Set with [method set_card].
 var card: Card
+## Z index the card returns to after flying in.
+var resting_z := 0
 
 var _face_up := false
 var _highlight := Highlight.NONE
@@ -95,7 +98,7 @@ func _fly_in(delay: float, from: Vector2) -> void:
 	_pop_tween.tween_callback(func() -> void:
 		self_modulate.a = 1
 		position = start
-		z_index = FLY_Z)
+		z_index = maxi(FLY_Z, resting_z))
 	_pop_tween.tween_property(self, "position", _home, FLY_SECONDS) \
 		.set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
 	_pop_tween.tween_callback(_land)
@@ -107,7 +110,7 @@ func _land() -> void:
 		return
 	_flying = false
 	position = _home
-	z_index = 0
+	z_index = resting_z
 
 
 ## After [param delay] seconds (hidden till then), starts the card at [constant POP_SCALE] and
