@@ -15,6 +15,12 @@ const CHIP_CHANGE_RISE := 10.0
 const CHIP_CHANGE_FONT_SIZE := UiTheme.FONT_SIZE + 4
 const POT_FONT_SIZE := UiTheme.FONT_SIZE + 4
 const POT_POP_SIZE := POT_FONT_SIZE + 6
+## Gap between board cards dealt together (the flop) going down.
+const BOARD_DEAL_STAGGER := 0.07
+## Gap between hole cards going down as they're dealt round the table.
+const HOLE_DEAL_STAGGER := 0.08
+## How long the action bar takes to fade in or out.
+const ACTION_BAR_FADE_SECONDS := 0.1
 ## Z index of the winning-hand banner and item notices: above the portraits, the gun and the
 ## chip-change labels (all at SeatView.DARKEN_Z + 1), below the DEBUG popup.
 const BANNER_Z := SeatView.DARKEN_Z + 2
@@ -51,6 +57,9 @@ var _chip_change_labels := {} # SeatView -> the "+100" Label currently over its 
 var _pot_tween: Tween
 var _action_bar: Panel
 var _fold_button: Button
+## Whether the human can act: false as soon as the action bar starts fading out.
+var _actions_open := false
+var _action_bar_tween: Tween
 var _call_button: Button
 var _raise_button: Button
 var _raise_slider: HSlider
@@ -95,6 +104,7 @@ func _ready() -> void:
 	_table.big_blind = _level.big_blind
 	_table.npc_think_time = GameConfig.npc_think_time
 	_table.deal_delay = GameConfig.deal_delay
+	_table.hole_card_stagger = HOLE_DEAL_STAGGER
 	_table.showdown_delay = GameConfig.showdown_delay
 	_table.between_hands_delay = GameConfig.between_hands_delay
 	_table.wait_for_next_hand = true
@@ -380,8 +390,25 @@ static func _new_button(text: String, shown := true) -> Button:
 
 
 func _submit(decision: Decision) -> void:
-	_action_bar.visible = false
+	if not _actions_open:
+		return # already chosen; the bar is fading out
+	_set_actions_open(false)
 	_table.submit_human_action(decision)
+
+
+## Quickly fades the action bar in or out. Its buttons and keys stop working as soon as it
+## starts fading out.
+func _set_actions_open(open: bool) -> void:
+	_actions_open = open
+	if _action_bar_tween:
+		_action_bar_tween.kill()
+	if open and not _action_bar.visible:
+		_action_bar.modulate.a = 0
+		_action_bar.visible = true
+	_action_bar_tween = create_tween()
+	_action_bar_tween.tween_property(_action_bar, "modulate:a", 1.0 if open else 0.0, ACTION_BAR_FADE_SECONDS)
+	if not open:
+		_action_bar_tween.tween_callback(_action_bar.hide)
 
 
 func _update_raise_label() -> void:
@@ -403,12 +430,12 @@ func _show_actions(p: PokerPlayer, to_call: int, min_to: int, max_to: int) -> vo
 	_raise_slider.value = min_to
 	_raise_button.text = "BET" if _table.current_bet == 0 else "RAISE"
 	_update_raise_label()
-	_action_bar.visible = true
+	_set_actions_open(true)
 
 
 func _unhandled_key_input(event: InputEvent) -> void:
 	var key := event as InputEventKey
-	if not _action_bar.visible or key == null or not key.pressed or key.echo:
+	if not _actions_open or key == null or not key.pressed or key.echo:
 		return
 	match key.keycode:
 		KEY_F:
@@ -443,10 +470,17 @@ func _connect_table() -> void:
 		for seat in _seats:
 			if seat.player.in_hand() and not seat.player.all_in:
 				seat.set_status(""))
-	_table.hole_cards_dealt.connect(_refresh_seats)
+	_table.hole_cards_dealt.connect(_deal_hole_cards)
 	_table.community_changed.connect(func(cards: Array[Card]) -> void:
+		# Cards dealt together (the flop) go down one after another.
+		var delay := 0.0
 		for i in _community.size():
-			_community[i].set_card(cards[i] if i < cards.size() else null, true))
+			var card: Card = cards[i] if i < cards.size() else null
+			if card != null and card != _community[i].card:
+				_community[i].set_card(card, true, delay)
+				delay += BOARD_DEAL_STAGGER
+			else:
+				_community[i].set_card(card, true))
 	_table.turn_started.connect(func(player: PokerPlayer, to_call: int, min_to: int, max_to: int) -> void:
 		for seat in _seats:
 			seat.set_active(seat.player == player)
@@ -703,6 +737,26 @@ func _win_highlight_for(card: Card) -> CardView.Highlight:
 	return CardView.Highlight.DIMMED
 
 
+## Hole cards go down one at a time in dealing order: round the table from the dealer's left,
+## everyone's first card, then everyone's second.
+func _deal_hole_cards() -> void:
+	var players := _table.players
+	var delay := 0.0
+	var delays := {} # PokerPlayer -> Array[float]
+	for _round in 2:
+		for step in range(1, players.size() + 1):
+			var player := players[(_table.dealer_index + step) % players.size()]
+			if player.hole_cards.is_empty():
+				continue
+			if not delays.has(player):
+				delays[player] = [] as Array[float]
+			delays[player].append(delay)
+			delay += HOLE_DEAL_STAGGER
+	for player: PokerPlayer in delays:
+		_seats[player.seat].refresh(delays[player])
+	_refresh_seats()
+
+
 func _refresh_seats() -> void:
 	for seat in _seats:
 		seat.refresh()
@@ -767,7 +821,8 @@ func _pop_pot_label() -> void:
 ## End of the game: a modal over the table. Winning it offers the next table; going bust
 ## offers this table again.
 func _show_game_over(winner: PokerPlayer) -> void:
-	_action_bar.visible = false
+	if _actions_open:
+		_set_actions_open(false)
 	var modal := Control.new()
 	modal.z_index = DebugMenu.MODAL_Z
 	UiTheme.add_at(self, modal, Vector2.ZERO, get_viewport_rect().size)

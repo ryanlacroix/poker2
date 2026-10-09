@@ -132,13 +132,14 @@ func _add_label(label: Label, y: float, color: Color, align := -1) -> void:
 	UiTheme.add_at(self, label, Vector2(0, y), Vector2(seat_size().x, UiTheme.LINE_HEIGHT))
 
 
-func refresh() -> void:
+## [param deal_delays] staggers newly dealt hole cards: how long each waits before going down.
+func refresh(deal_delays: Array[float] = []) -> void:
 	# RIP once shot out of hearts (straight away, not just from the next hand); OUT if they went broke.
 	_chips_label.text = "RIP" if player.hearts == 0 else "OUT" if player.is_out else "$%d" % player.chips
 	var face_up := player.is_human() or _reveal
 	for i in 2:
 		var hole_card: Card = player.hole_cards[i] if i < player.hole_cards.size() else null
-		_cards[i].set_card(hole_card, face_up)
+		_cards[i].set_card(hole_card, face_up, deal_delays[i] if i < deal_delays.size() else 0.0)
 		_cards[i].modulate = Color(1, 1, 1, 0.35) if player.folded else Color.WHITE
 	queue_redraw()
 

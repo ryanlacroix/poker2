@@ -30,14 +30,18 @@ func _ready() -> void:
 	mouse_filter = MOUSE_FILTER_IGNORE
 
 
-func set_card(p_card: Card, face_up: bool) -> void:
+## A new card pops in after [param delay] seconds, hidden until then.
+func set_card(p_card: Card, face_up: bool, delay := 0.0) -> void:
 	if p_card != card:
 		# A new card (or an empty slot) replaces any faded-out one at full opacity.
 		if _fade_tween:
 			_fade_tween.kill()
+		if _pop_tween:
+			_pop_tween.kill()
+		scale = Vector2.ONE
 		self_modulate = Color.WHITE
 		if p_card != null:
-			_pop_in()
+			_pop_in(delay)
 	card = p_card
 	_face_up = face_up
 	queue_redraw()
@@ -55,15 +59,19 @@ func fade_out() -> void:
 		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
 
 
-## Starts the card at [constant POP_SCALE] and shrinks it to its final size, from its centre.
-func _pop_in() -> void:
+## After [param delay] seconds (hidden till then), starts the card at [constant POP_SCALE] and
+## shrinks it to its final size, from its centre.
+func _pop_in(delay: float) -> void:
 	if not is_inside_tree():
 		return
-	if _pop_tween:
-		_pop_tween.kill()
 	pivot_offset = size / 2
-	scale = Vector2.ONE * POP_SCALE
 	_pop_tween = create_tween()
+	if delay > 0:
+		self_modulate.a = 0
+		_pop_tween.tween_interval(delay)
+	_pop_tween.tween_callback(func() -> void:
+		self_modulate.a = 1
+		scale = Vector2.ONE * POP_SCALE)
 	_pop_tween.tween_property(self, "scale", Vector2.ONE, POP_SECONDS) \
 		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
 

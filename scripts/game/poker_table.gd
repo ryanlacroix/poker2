@@ -39,6 +39,8 @@ signal _never
 var small_blind := 10
 var big_blind := 20
 var deal_delay := 0.4
+## Extra pause per hole card dealt after the first, so the view can lay them down one by one.
+var hole_card_stagger := 0.0
 var npc_think_time := 0.8
 var showdown_delay := 2.0
 var between_hands_delay := 1.5
@@ -223,14 +225,16 @@ func _play_hand() -> void:
 	_post_blind(players[bb_index], big_blind, "big")
 	current_bet = big_blind
 
+	var dealt := 0
 	for _round in 2:
 		for step in range(1, players.size() + 1):
 			var p := players[(dealer_index + step) % players.size()]
 			if not p.is_out:
 				p.hole_cards.append(_deck.draw())
+				dealt += 1
 	hole_cards_dealt.emit()
 	chips_changed.emit()
-	await _wait(deal_delay)
+	await _wait(deal_delay + hole_card_stagger * maxi(dealt - 1, 0))
 
 	await _betting_round(_next_seat(bb_index, _can_act))
 
