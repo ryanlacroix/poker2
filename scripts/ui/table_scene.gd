@@ -19,6 +19,8 @@ const POT_POP_SIZE := POT_FONT_SIZE + 6
 const BOARD_DEAL_STAGGER := 0.07
 ## Gap between hole cards going down as they're dealt round the table.
 const HOLE_DEAL_STAGGER := 0.15
+## Longest gap between the taps of a triple tap on the hidden debug spot.
+const DEBUG_TAP_GAP_MSEC := 400
 ## How long the action bar takes to fade in or out.
 const ACTION_BAR_FADE_SECONDS := 0.1
 # The table's intro before the first deal: a pause, the "Table N" title fading in, held, fading
@@ -80,6 +82,9 @@ var _drop_item_button: Button
 var _human_item_turn := false # the item phase is waiting on the human's choice
 var _continue_after_items := false # NEXT HAND was pressed on the human's item turn
 var _debug_menu: DebugMenu
+# Taps on the hidden debug spot: how many in a row, and when the last one was.
+var _debug_taps := 0
+var _debug_last_tap_msec := 0
 var _gun: GunView
 var _shot_darken: ColorRect
 var _shot_tracer: ShotTracer
@@ -261,9 +266,10 @@ func _build_ui() -> void:
 	_pot.font_size = POT_FONT_SIZE
 	UiTheme.add_at(self, _pot, pot_center - Vector2(80, 20), Vector2(160, 40))
 
-	var debug_button := _new_button("DEBUG")
-	UiTheme.add_at(self, debug_button, _layout.debug_button.position, _layout.debug_button.size)
-	debug_button.pressed.connect(func() -> void: _debug_menu.show())
+	# An invisible spot where the DEBUG button was: three quick taps open the debug menu.
+	var debug_spot := Control.new()
+	UiTheme.add_at(self, debug_spot, _layout.debug_button.position, _layout.debug_button.size)
+	debug_spot.gui_input.connect(_on_debug_spot_input)
 
 	# Shown under the board, in the (then empty) pot label's spot, once a hand is over, and on
 	# the human's item turn, where it means "keep my item": the rest of the table takes its
@@ -339,6 +345,18 @@ func _build_ui() -> void:
 	_debug_menu.give_item.connect(_debug_give_item)
 	_debug_menu.lose_heart.connect(_debug_lose_heart)
 	_debug_menu.win_table.connect(func() -> void: _show_game_over(_table.players[0]))
+
+
+func _on_debug_spot_input(event: InputEvent) -> void:
+	var click := event as InputEventMouseButton
+	if click == null or not click.pressed or click.button_index != MOUSE_BUTTON_LEFT:
+		return
+	var now := Time.get_ticks_msec()
+	_debug_taps = _debug_taps + 1 if now - _debug_last_tap_msec <= DEBUG_TAP_GAP_MSEC else 1
+	_debug_last_tap_msec = now
+	if _debug_taps >= 3:
+		_debug_taps = 0
+		_debug_menu.show()
 
 
 ## Before the first deal: a pause, then a big "Table N" title that fades in and away, then a short pause
