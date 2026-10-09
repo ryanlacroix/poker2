@@ -18,7 +18,7 @@ const POT_POP_SIZE := POT_FONT_SIZE + 6
 ## Gap between board cards dealt together (the flop) going down.
 const BOARD_DEAL_STAGGER := 0.07
 ## Gap between hole cards going down as they're dealt round the table.
-const HOLE_DEAL_STAGGER := 0.08
+const HOLE_DEAL_STAGGER := 0.13
 ## How long the action bar takes to fade in or out.
 const ACTION_BAR_FADE_SECONDS := 0.1
 ## Z index of the winning-hand banner and item notices: above the portraits, the gun and the
@@ -847,16 +847,16 @@ func _show_game_over(winner: PokerPlayer) -> void:
 	panel.add_child(box)
 
 	var title := Label.new()
-	title.text = "YOU WIN!" if winner.is_human() else "BUSTED!"
+	title.text = "TABLE CLEARED" if winner.is_human() else "BUSTED!"
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	title.add_theme_font_size_override("font_size", 32)
 	title.add_theme_color_override("font_color", PixelArt.GOLD)
 	box.add_child(title)
-	var detail := Label.new()
-	detail.text = "You took every chip at the table." if winner.is_human() \
-		else "%s leads with $%d." % [winner.display_name, winner.chips]
-	detail.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	box.add_child(detail)
+	if not winner.is_human():
+		var detail := Label.new()
+		detail.text = "%s leads with $%d." % [winner.display_name, winner.chips]
+		detail.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		box.add_child(detail)
 	var next := _new_button("ASCEND TO TABLE %d" % (_level.number + 1) if winner.is_human() else "PLAY AGAIN")
 	next.pressed.connect(func() -> void:
 		if winner.is_human():
@@ -864,6 +864,7 @@ func _show_game_over(winner: PokerPlayer) -> void:
 		get_tree().reload_current_scene())
 	box.add_child(next)
 	next.grab_focus()
-	var menu := _new_button("MAIN MENU")
-	menu.pressed.connect(func() -> void: get_tree().change_scene_to_file("res://scenes/main_menu.tscn"))
-	box.add_child(menu)
+	if not winner.is_human():
+		var menu := _new_button("MAIN MENU")
+		menu.pressed.connect(func() -> void: get_tree().change_scene_to_file("res://scenes/main_menu.tscn"))
+		box.add_child(menu)
