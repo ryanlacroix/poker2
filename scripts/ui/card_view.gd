@@ -11,6 +11,10 @@ const POP_SCALE := 1.25
 const POP_SECONDS := 0.15
 ## How long [method fade_out] takes.
 const FADE_SECONDS := 0.2
+## How long a dealt card takes to fly to its place (see [method deal_card]).
+const FLY_SECONDS := 0.25
+## Z index while flying: above the portraits, so a card never passes under one.
+const FLY_Z := SeatView.DARKEN_Z + 2
 
 var show_empty_slot := false
 ## Whole-number size multiplier; the pixel art is drawn scaled so it stays crisp. Set before adding.
@@ -22,6 +26,9 @@ var _face_up := false
 var _highlight := Highlight.NONE
 var _pop_tween: Tween
 var _fade_tween: Tween
+## Where the card sits; it's away from here only while flying in.
+var _home: Vector2
+var _flying := false
 
 
 func _ready() -> void:
@@ -32,19 +39,34 @@ func _ready() -> void:
 
 ## A new card pops in after [param delay] seconds, hidden until then.
 func set_card(p_card: Card, face_up: bool, delay := 0.0) -> void:
-	if p_card != card:
+	if _replace(p_card, face_up) and p_card != null:
+		_pop_in(delay)
+
+
+## Like [method set_card], but a new card flies in to its place from [param from] (a point in
+## canvas coordinates, where the card's centre starts).
+func deal_card(p_card: Card, face_up: bool, delay: float, from: Vector2) -> void:
+	if _replace(p_card, face_up) and p_card != null:
+		_fly_in(delay, from)
+
+
+## Shows [param p_card]. Returns whether it's a different card, in which case any animation of
+## the old one is stopped.
+func _replace(p_card: Card, face_up: bool) -> bool:
+	var changed := p_card != card
+	if changed:
 		# A new card (or an empty slot) replaces any faded-out one at full opacity.
 		if _fade_tween:
 			_fade_tween.kill()
 		if _pop_tween:
 			_pop_tween.kill()
+		_land()
 		scale = Vector2.ONE
 		self_modulate = Color.WHITE
-		if p_card != null:
-			_pop_in(delay)
 	card = p_card
 	_face_up = face_up
 	queue_redraw()
+	return changed
 
 
 ## Quickly fades the card out (end of a hand), keeping it set until it's replaced or cleared.
@@ -57,6 +79,35 @@ func fade_out() -> void:
 	_fade_tween = create_tween()
 	_fade_tween.tween_property(self, "self_modulate:a", 0.0, FADE_SECONDS) \
 		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+
+
+## After [param delay] seconds (hidden till then), moves the card to [param from] and glides it
+## back to its place.
+func _fly_in(delay: float, from: Vector2) -> void:
+	if not is_inside_tree():
+		return
+	_home = position
+	_flying = true
+	var start := position + get_global_transform().affine_inverse() * from - size / 2
+	self_modulate.a = 0
+	_pop_tween = create_tween()
+	_pop_tween.tween_interval(delay)
+	_pop_tween.tween_callback(func() -> void:
+		self_modulate.a = 1
+		position = start
+		z_index = FLY_Z)
+	_pop_tween.tween_property(self, "position", _home, FLY_SECONDS) \
+		.set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+	_pop_tween.tween_callback(_land)
+
+
+## Puts a flying card straight back in its place.
+func _land() -> void:
+	if not _flying:
+		return
+	_flying = false
+	position = _home
+	z_index = 0
 
 
 ## After [param delay] seconds (hidden till then), starts the card at [constant POP_SCALE] and

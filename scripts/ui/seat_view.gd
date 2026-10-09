@@ -68,6 +68,11 @@ func portrait_center() -> Vector2:
 	return position + _portrait_frame().get_center()
 
 
+## Centre of the portrait, in canvas coordinates.
+func portrait_global_center() -> Vector2:
+	return get_global_transform() * _portrait_frame().get_center()
+
+
 ## The portrait to draw right now: injured at 1 heart or fewer, if there is one.
 func _face() -> Texture2D:
 	return injured_portrait if player.hearts <= 1 and injured_portrait != null else portrait
@@ -132,14 +137,22 @@ func _add_label(label: Label, y: float, color: Color, align := -1) -> void:
 	UiTheme.add_at(self, label, Vector2(0, y), Vector2(seat_size().x, UiTheme.LINE_HEIGHT))
 
 
-## [param deal_delays] staggers newly dealt hole cards: how long each waits before going down.
-func refresh(deal_delays: Array[float] = []) -> void:
+## Newly dealt hole cards fly in from [param from] (canvas coordinates), each after its delay in
+## [param delays].
+func deal_cards(delays: Array[float], from: Vector2) -> void:
+	var face_up := player.is_human() or _reveal
+	for i in mini(player.hole_cards.size(), delays.size()):
+		_cards[i].deal_card(player.hole_cards[i], face_up, delays[i], from)
+	refresh()
+
+
+func refresh() -> void:
 	# RIP once shot out of hearts (straight away, not just from the next hand); OUT if they went broke.
 	_chips_label.text = "RIP" if player.hearts == 0 else "OUT" if player.is_out else "$%d" % player.chips
 	var face_up := player.is_human() or _reveal
 	for i in 2:
 		var hole_card: Card = player.hole_cards[i] if i < player.hole_cards.size() else null
-		_cards[i].set_card(hole_card, face_up, deal_delays[i] if i < deal_delays.size() else 0.0)
+		_cards[i].set_card(hole_card, face_up)
 		_cards[i].modulate = Color(1, 1, 1, 0.35) if player.folded else Color.WHITE
 	queue_redraw()
 

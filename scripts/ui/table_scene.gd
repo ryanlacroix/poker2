@@ -137,15 +137,16 @@ func _draw_felt(points: PackedVector2Array, color: Color, texture: Texture2D) ->
 
 
 ## Faint grain (the backdrop, and some tables' felt): [param color] with scattered pixels a shade darker or lighter, as a texture of
-## [param size]. A random tile, repeated, so it's quick to build.
-static func _grained_felt(color: Color, size: Vector2i) -> Texture2D:
+## [param size]. A random tile, repeated, so it's quick to build. [param strength] scales how far
+## those pixels are shaded (1 = full).
+static func _grained_felt(color: Color, size: Vector2i, strength := 1.0) -> Texture2D:
 	const TILE := 48
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 1
 	var tile := Image.create(TILE, TILE, false, Image.FORMAT_RGBA8)
 	tile.fill(color)
-	var dark := color.darkened(0.12)
-	var light := color.lightened(0.05)
+	var dark := color.lerp(color.darkened(0.12), strength)
+	var light := color.lerp(color.lightened(0.05), strength)
 	for y in TILE:
 		for x in TILE:
 			var roll := rng.randf()
@@ -178,10 +179,10 @@ func _build_ui() -> void:
 	_layout = PortraitLayout.new(viewport_size, _table.players.size() - 1, insets.x, insets.y)
 	var pot_center := _layout.pot_center
 	_backdrop_texture = _grained_felt(BACKDROP, Vector2i(viewport_size.ceil()))
-	if _level.textured:
+	if _level.grain > 0:
 		var felt_size := Vector2i(_layout.table.size.ceil())
-		_felt_texture = _grained_felt(_level.felt, felt_size)
-		_felt_inner_texture = _grained_felt(_level.felt_inner, felt_size)
+		_felt_texture = _grained_felt(_level.felt, felt_size, _level.grain)
+		_felt_inner_texture = _grained_felt(_level.felt_inner, felt_size, _level.grain)
 
 	# Which table this is, in the header strip above the felt, on the left; lettered like the
 	# players' names, with the table's name bold over a hard black shadow.
@@ -741,8 +742,8 @@ func _win_highlight_for(card: Card) -> CardView.Highlight:
 	return CardView.Highlight.DIMMED
 
 
-## Hole cards go down one at a time in dealing order: round the table from the dealer's left,
-## everyone's first card, then everyone's second.
+## Hole cards fly out from the dealer's portrait one at a time in dealing order: round the table
+## from the dealer's left, everyone's first card, then everyone's second.
 func _deal_hole_cards() -> void:
 	var players := _table.players
 	var delay := 0.0
@@ -756,8 +757,9 @@ func _deal_hole_cards() -> void:
 				delays[player] = [] as Array[float]
 			delays[player].append(delay)
 			delay += HOLE_DEAL_STAGGER
+	var dealer := _seats[players[_table.dealer_index].seat]
 	for player: PokerPlayer in delays:
-		_seats[player.seat].refresh(delays[player])
+		_seats[player.seat].deal_cards(delays[player], dealer.portrait_global_center())
 	_refresh_seats()
 
 
