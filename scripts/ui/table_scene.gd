@@ -359,14 +359,15 @@ func _build_action_bar() -> void:
 		_submit(Decision.new(Poker.Action.CHECK if _to_call == 0 else Poker.Action.CALL)))
 	y += button_h + gap
 
+	# The raise amount on the left, its slider on the right.
+	_raise_label = Label.new()
+	_raise_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+	_raise_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	UiTheme.add_at(_action_bar, _raise_label, Vector2(pad, y), Vector2(74, slider_h))
 	_raise_slider = HSlider.new()
 	_raise_slider.step = 1
-	UiTheme.add_at(_action_bar, _raise_slider, Vector2(pad, y), Vector2(inner - 78, slider_h))
+	UiTheme.add_at(_action_bar, _raise_slider, Vector2(pad + 78, y), Vector2(inner - 78, slider_h))
 	_raise_slider.value_changed.connect(func(_value: float) -> void: _update_raise_label())
-	_raise_label = Label.new()
-	_raise_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	_raise_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	UiTheme.add_at(_action_bar, _raise_label, Vector2(pad + inner - 74, y), Vector2(74, slider_h))
 	y += slider_h + gap
 
 	_raise_button = _action_button("RAISE", y, func() -> void:
@@ -425,6 +426,9 @@ func _show_actions(p: PokerPlayer, to_call: int, min_to: int, max_to: int) -> vo
 	var can_raise := p.chips > to_call
 	_raise_button.disabled = not can_raise
 	_raise_slider.editable = can_raise and max_to > min_to
+	# Exponential, so the low end moves in small steps and the high end in big ones.
+	# It needs a minimum above zero.
+	_raise_slider.exp_edit = min_to > 0
 	_raise_slider.min_value = min_to
 	_raise_slider.max_value = max_to
 	_raise_slider.value = min_to
