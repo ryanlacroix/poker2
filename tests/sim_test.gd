@@ -30,6 +30,8 @@ func _test_evaluator() -> void:
 	_test_items()
 	_test_item_phase()
 	_test_item_odds()
+	_test_shimmer()
+	_test_shimmer_phase()
 	_expect_best_five("Ah Kd 7c 7s 2d 3h Ac", "Ah Ac 7c 7s Kd")
 	_expect_best_five("2h 3h 4h 5h 7h 6d 8c", "7h 5h 4h 3h 2h")
 	_expect_best_five("Ah 2d 3c 4s 5h Kd Kc", "Ah 2d 3c 4s 5h")
@@ -95,11 +97,108 @@ func _test_item_odds() -> void:
 	for i in 40_000:
 		var item := Item.random(rng)
 		counts[item] = counts.get(item, 0) + 1
-	# Weights 3 : 1 : 1, so 24000 : 8000 : 8000 expected.
-	for item: Item.Kind in [Item.Kind.GUN, Item.Kind.SHIELD, Item.Kind.STIMPAK]:
-		var want := 40_000 * Item.weight(item) / 5
+	# Weights 3 : 1 : 1 : 1, so 20000 : 6667 : 6667 : 6667 expected.
+	var total_weight := 0
+	for item: Item.Kind in Item.Kind.values():
+		total_weight += Item.weight(item)
+	for item: Item.Kind in Item.Kind.values():
+		var want := 40_000 * Item.weight(item) / total_weight
 		var got: int = counts.get(item, 0)
 		_check(absi(got - want) < 1_000, "%s pickups match their weight (got %d of 40000, want ~%d)" % [Item.display_name(item), got, want])
+
+
+func _test_shimmer() -> void:
+	var brain := NpcBrain.new()
+	var caster := PokerPlayer.new("CASTER", 1000, brain)
+	var target := PokerPlayer.new("TARGET", 1000, brain)
+	var shooter := PokerPlayer.new("SHOOTER", 1000, brain)
+	var a := PokerPlayer.new("A", 1000, brain)
+	var b := PokerPlayer.new("B", 1000, brain)
+	var table := PokerTable.new()
+	table.setup([caster, target, shooter, a, b])
+	table.hand_number = 4
+	caster.item = Item.Kind.HEX
+	caster.hex = Hex.Effect.SHIMMER
+	caster.item_gained_on_hand = 3
+	_check(table.can_use_item(caster), "a hex can be used at the end of the next hand")
+	_check(not table.cast_hex(caster, caster) and caster.has_item(), "a shimmer can't be cast on yourself")
+	_check(table.cast_hex(caster, target) and not caster.has_item(), "casting a hex uses it up")
+	_check(target.shimmered_by == caster, "the shimmer lands on the target")
+
+	# Only A and B can be caught by the spread, so both are, and nobody else.
+	shooter.item = Item.Kind.GUN
+	a.item = Item.Kind.SHIELD
+	_check(table.shoot(shooter, target) == Item.ShotResult.HIT and target.hearts == 2, "the shimmering player takes the shot")
+	var hits := table.spread_shimmer(shooter, target)
+	_check(hits.size() == 2 and a in hits and b in hits, "the shot spreads to others, never the caster or the shooter")
+	_check(shooter.hearts == 3 and caster.hearts == 3 and b.hearts == 2, "the caster and the shooter are safe")
+	_check(hits[a] == Item.ShotResult.SHIELD_BROKE and a.hearts == 3, "a shield stops a spread shot")
+	_check(not target.is_shimmering(), "being shot ends the shimmer")
+	_check(table.spread_shimmer(shooter, target).is_empty(), "the next shot doesn't spread")
+
+	# With more players about, exactly 3 of the others are hit.
+	var crowd: Array[PokerPlayer] = [caster, target]
+	for i in 5:
+		crowd.append(PokerPlayer.new("P%d" % i, 1000, brain))
+	table.setup(crowd)
+	target.shimmered_by = caster
+	hits = table.spread_shimmer(crowd[2], target)
+	_check(hits.size() == Hex.SHIMMER_SPREAD and crowd[2] not in hits and caster not in hits, "a spread hits exactly 3 when there are more to pick from")
+
+	# NPCs favour shooting a shimmering player over an otherwise equal one, whoever cast it.
+	target.hearts = 3
+	target.shimmered_by = caster
+	var shimmering_hits := 0
+	for i in 200:
+		if NpcBrain._pick_target(crowd[2], [target, crowd[3]] as Array[PokerPlayer]) == target:
+			shimmering_hits += 1
+	_check(shimmering_hits > 150, "NPCs prefer to shoot a shimmering player (%d of 200)" % shimmering_hits)
+
+	# NPCs cast a ready shimmer (an aggressive one, every time) on the biggest stack.
+	var bold := NpcBrain.new()
+	bold.aggression = 1
+	caster.item = Item.Kind.HEX
+	crowd[3].chips = 5000
+	var decision := bold.decide_item(caster, true, table.hex_targets(caster))
+	_check(decision.action == Item.Action.USE and decision.target == crowd[3], "an NPC casts a shimmer on the biggest stack")
+	_check(bold.decide_item(caster, false, table.hex_targets(caster)).action == Item.Action.KEEP, "an NPC can't cast a hex before it's ready")
+	table.free()
+
+
+func _test_shimmer_phase() -> void:
+	# A shimmer lasts from hand to hand until someone shoots its target. An aggressive NPC with a
+	# ready gun goes for the shimmering player; unless they folded, the shot spreads (sparing the
+	# caster and the shooter) and ends the shimmer.
+	var gunman := NpcBrain.new()
+	gunman.simulations = 20
+	gunman.aggression = 1
+	var brain := NpcBrain.new()
+	brain.simulations = 20
+	var players: Array[PokerPlayer] = [
+		PokerPlayer.new("A", 100_000, gunman), PokerPlayer.new("B", 100_000, brain),
+		PokerPlayer.new("C", 100_000, brain), PokerPlayer.new("D", 100_000, brain),
+	]
+	players[0].item = Item.Kind.GUN
+	players[0].item_gained_on_hand = -1
+	players[1].shimmered_by = players[2]
+	# Lambdas capture locals by value, so the results they record go in here.
+	var seen := {"victim": null, "spread": [], "ended": [], "gunman_folded": null}
+	_play_hands(2, 0, players, func(_table: PokerTable) -> void:
+		if seen.gunman_folded == false:
+			_check(seen.victim == players[1], "an NPC shoots the shimmering player")
+			_check(seen.spread == [players[3]], "the shot spreads to everyone but the caster and the shooter")
+			_check(not players[1].is_shimmering() and seen.ended == [players[1]], "the shot ends the shimmer")
+		elif seen.gunman_folded == true:
+			_check(players[1].is_shimmering() and seen.ended.is_empty(), "a shimmer lasts while nobody shoots"),
+		func(table: PokerTable) -> void:
+			table.shot.connect(func(_s: PokerPlayer, t: PokerPlayer, _result: Item.ShotResult) -> void:
+				seen.victim = t)
+			table.shot_spread.connect(func(_source: PokerPlayer, t: PokerPlayer, _result: Item.ShotResult) -> void:
+				seen.spread.append(t))
+			table.shimmer_ended.connect(func(p: PokerPlayer) -> void: seen.ended.append(p))
+			table.item_phase_finished.connect(func() -> void:
+				if seen.gunman_folded == null:
+					seen.gunman_folded = players[0].folded))
 
 
 func _test_stimpak() -> void:
@@ -251,13 +350,15 @@ func _run_simulation() -> void:
 		_check(total == expected, "chips conserved after hand %d (%d != %d)" % [table.hand_number, total, expected])
 		_check(table.players.all(func(p: PokerPlayer) -> bool: return p.chips >= 0), "no negative stacks"))
 	# Lambdas capture locals by value, so the counters live in here.
-	var counts := {"shots": 0, "stimpaks": 0, "pauses": 0}
+	var counts := {"shots": 0, "stimpaks": 0, "hexes": 0, "pauses": 0}
 	# Stand in for the view: start item turns straight away, and count the shots fired.
 	table.waiting_for_item_phase.connect(table.begin_item_phase)
 	table.shot.connect(func(_s: PokerPlayer, _t: PokerPlayer, _result: Item.ShotResult) -> void:
 		counts.shots += 1)
 	table.stimpak_used.connect(func(_p: PokerPlayer, _healed: bool) -> void:
 		counts.stimpaks += 1)
+	table.hex_cast.connect(func(_c: PokerPlayer, _effect: Hex.Effect, _t: PokerPlayer) -> void:
+		counts.hexes += 1)
 	# Stand in for the "next hand" button.
 	table.waiting_for_next_hand.connect(func() -> void:
 		counts.pauses += 1
@@ -265,7 +366,7 @@ func _run_simulation() -> void:
 	table.game_over.connect(func(winner: PokerPlayer) -> void:
 		# Every hand but the game-ending one should pause for the button.
 		_check(counts.pauses == table.hand_number - 1, "paused %d times over %d hands" % [counts.pauses, table.hand_number])
-		print("Simulated %d hands (%d gunshots, %d stimpaks), leader %s with %d" % [table.hand_number, counts.shots, counts.stimpaks, winner.display_name, winner.chips])
+		print("Simulated %d hands (%d gunshots, %d stimpaks, %d hexes), leader %s with %d" % [table.hand_number, counts.shots, counts.stimpaks, counts.hexes, winner.display_name, winner.chips])
 		print("ALL TESTS PASSED" if _failures == 0 else "%d FAILURE(S)" % _failures)
 		get_tree().quit(_failures))
 	table.start_game()

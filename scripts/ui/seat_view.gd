@@ -103,7 +103,7 @@ func _portrait_frame() -> Rect2:
 func _ready() -> void:
 	size = seat_size()
 	mouse_filter = MOUSE_FILTER_IGNORE
-	set_process(false) # only runs while the winner glow animates
+	set_process(false) # only runs while a glow or flash animates
 	# Cards sit beside the portrait (on the inner side for compact seats).
 	var card_scale := 1 if _is_compact() else WIDE_CARD_SCALE
 	var cards_origin: Vector2
@@ -173,6 +173,7 @@ func refresh() -> void:
 		var hole_card: Card = player.hole_cards[i] if i < player.hole_cards.size() else null
 		_cards[i].set_card(hole_card, face_up)
 		_cards[i].modulate = Color(1, 1, 1, 0.35) if player.folded else Color.WHITE
+	_update_processing()
 	queue_redraw()
 
 
@@ -239,9 +240,18 @@ func _hit_active() -> bool:
 	return _hit_at >= 0 and Time.get_ticks_msec() / 1000.0 - _hit_at < HIT_SECONDS
 
 
+func _animating() -> bool:
+	return _is_winner or _is_target or _hit_active() or _shimmering()
+
+
+## Under a shimmer and still in the game (a shimmer on someone knocked out stops showing).
+func _shimmering() -> bool:
+	return player.is_shimmering() and PokerTable.in_game(player)
+
+
 # Only redraw every frame while something is animating.
 func _update_processing() -> void:
-	set_process(_is_winner or _is_target or _hit_active())
+	set_process(_animating())
 
 
 func _gui_input(event: InputEvent) -> void:
@@ -263,8 +273,8 @@ func highlight_cards(highlight_for: Callable) -> void:
 
 
 func _process(_delta: float) -> void:
-	queue_redraw() # animates the winner / target glow and the hit flash
-	if not _is_winner and not _is_target and not _hit_active():
+	queue_redraw() # animates the winner / target / shimmer glow and the hit flash
+	if not _animating():
 		set_process(false)
 
 
@@ -328,6 +338,8 @@ func _draw_portrait(c: CanvasItem) -> void:
 		_draw_target_glow(c, frame, face)
 	elif _is_winner:
 		_draw_winner_glow(c, frame, face)
+	elif _shimmering():
+		_draw_shimmer_glow(c, frame, face, dimmed)
 	else:
 		c.draw_rect(frame.grow(1), PixelArt.INK if dimmed else PixelArt.PAPER, false, 1)
 		c.draw_texture_rect(face, frame, false, Color(0.45, 0.45, 0.5) if dimmed else Color.WHITE)
@@ -336,6 +348,8 @@ func _draw_portrait(c: CanvasItem) -> void:
 		_draw_eliminated_x(c, frame)
 	elif player.is_out:
 		_draw_broke_sign(c, frame)
+	if _shimmering():
+		_draw_shimmer(c, frame)
 	_draw_item(c, frame)
 	if _hit_active():
 		var k := 1.0 - (Time.get_ticks_msec() / 1000.0 - _hit_at) / HIT_SECONDS
@@ -360,6 +374,9 @@ func _draw_item(c: CanvasItem, frame: Rect2) -> void:
 		Item.Kind.STIMPAK:
 			icon = PixelArt.STIMPAK_ICON
 			colors = PixelArt.STIMPAK_COLORS
+		Item.Kind.HEX:
+			icon = PixelArt.HEX_ICON
+			colors = PixelArt.HEX_COLORS
 		_:
 			assert(false, "unknown item %d" % player.item)
 			return
@@ -403,6 +420,46 @@ func _draw_target_glow(c: CanvasItem, frame: Rect2, face: Texture2D) -> void:
 	c.draw_rect(frame.grow(1), red, false, 1)
 	c.draw_texture_rect(face, frame, false, Color.WHITE.lerp(Color("ff9090"), 0.55 * pulse))
 	c.draw_rect(frame, Color(red, 0.22 * pulse))
+
+
+## White frame with softly pulsing halo rings, for a player under a shimmer.
+func _draw_shimmer_glow(c: CanvasItem, frame: Rect2, face: Texture2D, dimmed: bool) -> void:
+	var t := Time.get_ticks_msec() / 1000.0
+	var pulse := 0.6 + 0.4 * sin(t * 3.0)
+	c.draw_rect(frame.grow(4), Color(Color.WHITE, 0.2 * pulse), false, 1)
+	c.draw_rect(frame.grow(3), Color(Color.WHITE, 0.45 * pulse), false, 1)
+	c.draw_rect(frame.grow(2), Color(Color.WHITE, 0.75), false, 1)
+	c.draw_rect(frame.grow(1), Color.WHITE, false, 1)
+	c.draw_texture_rect(face, frame, false, Color(0.45, 0.45, 0.5) if dimmed else Color.WHITE)
+
+
+## The shimmer over the portrait, on its own pixel grid: a pale diagonal band sweeping across,
+## and scattered pixels twinkling white.
+func _draw_shimmer(c: CanvasItem, frame: Rect2) -> void:
+	const GRID := 16
+	const SWEEP_SECONDS := 1.8
+	var px := frame.size.x / GRID
+	var t := Time.get_ticks_msec() / 1000.0
+	# The band runs from the top-left corner to the bottom-right, then pauses off the portrait.
+	var band := fmod(t / SWEEP_SECONDS, 1.0) * GRID * 3 - GRID * 0.5
+	var twinkle_step := int(t * 6)
+	for y in GRID:
+		for x in GRID:
+			var alpha := 0.0
+			var d := absf(x + y - band)
+			if d < 2.5:
+				alpha = 0.32 * (1.0 - d / 2.5)
+			# Each pixel twinkles now and then, out of step with its neighbours.
+			if (x * 7 + y * 13 + twinkle_step * 5 + _twinkle_seed()) % 37 == 0:
+				alpha = maxf(alpha, 0.7)
+			if alpha > 0:
+				c.draw_rect(Rect2(frame.position + Vector2(x, y) * px, Vector2(px, px)), Color(Color.WHITE, alpha))
+	c.draw_rect(frame, Color(Color("dde8ff"), 0.08))
+
+
+## Offsets the shimmer's twinkles so seats under a shimmer don't sparkle in lockstep.
+func _twinkle_seed() -> int:
+	return player.seat * 11
 
 
 ## Gold frame with pulsing halo rings, a warm tint and twinkling corner sparkles.

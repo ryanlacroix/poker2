@@ -10,6 +10,9 @@ enum Kind {
 	SHIELD,
 	## Used between hands to win back a heart, if the holder has lost any; used up either way.
 	STIMPAK,
+	## Used between hands to cast its [enum Hex.Effect], rolled at random on pickup and kept
+	## secret until then; used up.
+	HEX,
 }
 
 ## A player's item slot when they carry nothing.
@@ -24,16 +27,17 @@ enum ShotResult { SHIELD_BROKE, HIT, ELIMINATED }
 
 ## Whether [param item] has an action besides being dropped.
 static func can_be_used(item: int) -> bool:
-	return item == Kind.GUN or item == Kind.STIMPAK
+	return item == Kind.GUN or item == Kind.STIMPAK or item == Kind.HEX
 
 
 ## How likely each item is, relative to the others, when a player picks one up:
-## 3 guns to 1 shield to 1 stimpak.
+## 3 guns to 1 shield to 1 stimpak to 1 hex.
 static func weight(item: Kind) -> int:
 	match item:
 		Kind.GUN: return 3
 		Kind.SHIELD: return 1
 		Kind.STIMPAK: return 1
+		Kind.HEX: return 1
 	assert(false, "unknown item %d" % item)
 	return 0
 
@@ -58,6 +62,7 @@ static func display_name(item: Kind) -> String:
 		Kind.GUN: return "GUN"
 		Kind.SHIELD: return "SHIELD"
 		Kind.STIMPAK: return "STIMPAK"
+		Kind.HEX: return "HEX"
 	assert(false, "unknown item %d" % item)
 	return ""
 
@@ -68,5 +73,6 @@ static func gained_text(item: Kind, who: String) -> String:
 		Kind.GUN: return "%s got a gun" % who
 		Kind.SHIELD: return "%s GOT THE SHIELD" % who
 		Kind.STIMPAK: return "%s got a stimpak" % who
+		Kind.HEX: return "%s got a hex" % who
 	assert(false, "unknown item %d" % item)
 	return ""

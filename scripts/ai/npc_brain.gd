@@ -63,27 +63,49 @@ func _raise(ctx: DecisionContext, equity: float) -> Decision:
 
 ## Item phase: fire a ready gun (more likely the more aggressive), and timid players who
 ## won't fire it drop it to try for a shield instead. A shield is always worth keeping, and a
-## stimpak is saved until it would win back a heart.
+## stimpak is saved until it would win back a heart. A ready hex is cast about as readily as a
+## gun is fired. [param targets] are who the gun or hex could be used on.
 func decide_item(me: PokerPlayer, can_use: bool, targets: Array[PokerPlayer]) -> ItemDecision:
 	if me.item == Item.Kind.STIMPAK:
 		return ItemDecision.new(Item.Action.USE if can_use and me.is_hurt() else Item.Action.KEEP)
+	if me.item == Item.Kind.HEX:
+		if not can_use or randf() >= 0.5 + 0.5 * aggression:
+			return ItemDecision.new(Item.Action.KEEP)
+		return ItemDecision.new(Item.Action.USE, _pick_hex_target(me.hex, targets))
 	if me.item != Item.Kind.GUN or not can_use or targets.is_empty():
 		return ItemDecision.new(Item.Action.KEEP)
 	if randf() < 0.5 + 0.5 * aggression:
-		return ItemDecision.new(Item.Action.USE, _pick_target(targets))
+		return ItemDecision.new(Item.Action.USE, _pick_target(me, targets))
 	return ItemDecision.new(Item.Action.DROP if aggression < 0.3 else Item.Action.KEEP)
 
 
 ## The most rewarding shot: finishing someone off takes their whole stack, so favour big stacks
-## with few hearts left; a shield only breaks, so shielded players are a poor target.
-static func _pick_target(targets: Array[PokerPlayer]) -> PokerPlayer:
+## with few hearts left; a shield only breaks, so shielded players are a poor target. A shot at
+## a shimmering player spreads to others and never back to the shooter, so it's worth more.
+static func _pick_target(me: PokerPlayer, targets: Array[PokerPlayer]) -> PokerPlayer:
 	var best: PokerPlayer = null
 	var best_value := -INF
 	for t in targets:
 		var value := float(t.chips) / t.hearts * (0.25 if t.item == Item.Kind.SHIELD else 1.0) * randf_range(0.8, 1.2)
+		if t.is_shimmering():
+			value *= 2.0
 		if value > best_value:
 			best = t
 			best_value = value
+	return best
+
+
+## Who to cast [param effect] on, or null if it needs nobody. A shimmer draws everyone's fire
+## and its spread never hits the caster, so it goes on the biggest stack not already shimmering:
+## the player the caster most wants shot at.
+static func _pick_hex_target(effect: Hex.Effect, targets: Array[PokerPlayer]) -> PokerPlayer:
+	if not Hex.needs_target(effect):
+		return null
+	var best: PokerPlayer = null
+	for t in targets:
+		if best == null or (best.is_shimmering() and not t.is_shimmering()) \
+				or (best.is_shimmering() == t.is_shimmering() and t.chips > best.chips):
+			best = t
 	return best
 
 

@@ -290,6 +290,29 @@ const STIMPAK_COLORS := {
 	"G": Color("c8d2de"),
 }
 
+# Hex item icon (15x14): an inverted red pentagram on black.
+const HEX_ICON: Array[String] = [
+	"KKKKKKKKKKKKKKK",
+	"KKKRKKKKKKKRKKK",
+	"KKKRRRKKKRRRKKK",
+	"KKKKRKRKRKRKKKK",
+	"KKKKRKKRKKRKKKK",
+	"KKKKRRRKRRRKKKK",
+	"KKKKRRKKKRRKKKK",
+	"KKRRKRKKKRKRRKK",
+	"KRRRRRRRRRRRRRK",
+	"KKKKKKRKRKKKKKK",
+	"KKKKKKRKRKKKKKK",
+	"KKKKKKKRKKKKKKK",
+	"KKKKKKKRKKKKKKK",
+	"KKKKKKKKKKKKKKK",
+]
+
+const HEX_COLORS := {
+	"K": Color("000000"),
+	"R": Color("e01c24"),
+}
+
 ## Flash over a portrait when a stimpak wins back a heart.
 const HEAL_GREEN := Color("5ad070")
 

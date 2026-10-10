@@ -33,6 +33,10 @@ const INTRO_AFTER_DELAY := 0.5
 ## The title is drawn this small, then scaled up by [constant INTRO_PIXEL_SCALE] into chunky pixels.
 const INTRO_FONT_SIZE := 16
 const INTRO_PIXEL_SCALE := 3
+## Width of the text in the hex modal, which wraps to fit.
+const HEX_MODAL_TEXT_WIDTH := 240
+## Tracers from a shimmering player to the others their shot spread to.
+const SHIMMER_TRACER_COLOR := Color("c8d8ff")
 ## Z index of the winning-hand banner and item notices: above the portraits, the gun and the
 ## chip-change labels (all at SeatView.DARKEN_Z + 1), below the DEBUG popup.
 const BANNER_Z := SeatView.DARKEN_Z + 2
@@ -94,6 +98,7 @@ var _win_banner: WinBanner
 var _notices: NoticeBanner
 var _item_news: Array[String] = [] # this hand's item pickups, announced once it's settled
 var _targeting := false
+var _hex_modal: Control # the hex being cast, open until CAST is pressed
 var _to_call := 0
 
 
@@ -303,7 +308,6 @@ func _build_ui() -> void:
 	_shot_tracer.z_index = SeatView.DARKEN_Z
 	UiTheme.add_at(self, _shot_tracer, Vector2.ZERO, viewport_size)
 	_target_hint = Label.new()
-	_target_hint.text = "PICK A TARGET"
 	_target_hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_target_hint.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	_target_hint.visible = false
@@ -615,6 +619,10 @@ func _connect_table() -> void:
 		else:
 			seat.set_status("WASTED", PixelArt.PAPER)
 		seat.refresh())
+	_table.hex_cast.connect(_on_hex_cast)
+	_table.shot_spread.connect(_on_shot_spread)
+	_table.shimmer_ended.connect(func(player: PokerPlayer) -> void:
+		_seats[player.seat].refresh())
 	_table.item_dropped.connect(func(player: PokerPlayer, item: Item.Kind) -> void:
 		_seats[player.seat].set_status("DROPPED %s" % Item.display_name(item), PixelArt.PAPER)
 		_seats[player.seat].refresh())
@@ -677,8 +685,10 @@ func _submit_item_decision(decision: ItemDecision) -> void:
 ## Debug: hands the human [param item], replacing whatever they carry. It counts as
 ## picked up a hand ago, so it can be used at the end of this hand (or right now, on their item turn).
 func _debug_give_item(item: Item.Kind) -> void:
+	if _hex_modal:
+		return # the hex being cast is already revealed
 	var human := _table.players[0]
-	human.item = item
+	_table.give_item(human, item)
 	human.item_gained_on_hand = _table.hand_number - 1
 	_seats[0].refresh()
 	if _human_item_turn and not _targeting:
@@ -697,25 +707,61 @@ func _debug_lose_heart() -> void:
 
 
 func _use_item() -> void:
-	match _table.players[0].item:
+	var human := _table.players[0]
+	match human.item:
 		Item.Kind.GUN:
 			_hide_item_buttons()
-			var targets := _table.gun_targets(_table.players[0])
-			_enter_target_mode(_seats.filter(func(s: SeatView) -> bool: return s.player in targets))
+			_enter_target_mode(_table.gun_targets(human), true, "PICK A TARGET")
 		Item.Kind.STIMPAK:
 			_submit_item_decision(ItemDecision.new(Item.Action.USE))
+		Item.Kind.HEX:
+			_hide_item_buttons()
+			_show_hex_modal(human.hex)
 
 
-func _enter_target_mode(targets: Array[SeatView]) -> void:
+## Seats of [param players] pulse and take a tap; the gun floats in the middle while aiming one.
+func _enter_target_mode(players: Array[PokerPlayer], with_gun: bool, hint: String) -> void:
 	_targeting = true
-	_gun.visible = true
-	_gun.set_process(true)
+	if with_gun:
+		_gun.visible = true
+		_gun.set_process(true)
+	_target_hint.text = hint
 	_target_hint.visible = true
-	for seat in targets:
-		seat.set_targetable(true)
+	for seat in _seats:
+		if seat.player in players:
+			seat.set_targetable(true)
 
 
-## The human picked who to shoot; the table fires (see [method _on_shot]).
+## The hex is revealed: its name, what it does, and CAST (there's no backing out). Casting one
+## that needs a target then has the human pick who.
+func _show_hex_modal(effect: Hex.Effect) -> void:
+	var box := VBoxContainer.new()
+	var title := Label.new()
+	title.text = Hex.display_name(effect)
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	title.add_theme_font_size_override("font_size", 32)
+	title.add_theme_color_override("font_color", PixelArt.HEART_RED)
+	box.add_child(title)
+	var detail := Label.new()
+	detail.text = Hex.description(effect)
+	detail.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	detail.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	detail.custom_minimum_size.x = HEX_MODAL_TEXT_WIDTH
+	box.add_child(detail)
+	var cast := _new_button("CAST")
+	cast.pressed.connect(func() -> void:
+		_hex_modal.queue_free()
+		_hex_modal = null
+		if Hex.needs_target(effect):
+			_enter_target_mode(_table.hex_targets(_table.players[0]), false, "PICK A PLAYER")
+		else:
+			_submit_item_decision(ItemDecision.new(Item.Action.USE)))
+	box.add_child(cast)
+	_hex_modal = _show_modal(box)
+	cast.grab_focus()
+
+
+## The human picked who to shoot or hex; the table carries it out.
 func _on_seat_targeted(target: SeatView) -> void:
 	if not _targeting:
 		return
@@ -733,13 +779,8 @@ func _on_shot(shooter: PokerPlayer, target_player: PokerPlayer, result: Item.Sho
 	var target := _seats[target_player.seat]
 	_darken_for_shot()
 	_shot_tracer.fire(_seats[shooter.seat].portrait_center(), target.portrait_center())
-	target.flash_hit()
 	_seats[shooter.seat].refresh() # the gun is used up
-	match result:
-		Item.ShotResult.SHIELD_BROKE: target.set_status("SHIELD BROKE", PixelArt.HEART_RED)
-		Item.ShotResult.ELIMINATED: target.set_status("ELIMINATED", PixelArt.HEART_RED)
-		_: target.set_status("DIRECT HIT", PixelArt.HEART_RED)
-	target.refresh()
+	_show_hit(target, result)
 
 	if not shooter.is_human():
 		return
@@ -752,6 +793,28 @@ func _on_shot(shooter: PokerPlayer, target_player: PokerPlayer, result: Item.Sho
 		_gun.set_process(false))
 
 
+## A hex was cast: the caster's status names it, and a shimmer lights up its target.
+func _on_hex_cast(caster: PokerPlayer, effect: Hex.Effect, target: PokerPlayer) -> void:
+	_seats[caster.seat].set_status("CAST %s" % Hex.display_name(effect), PixelArt.HEART_RED)
+	_seats[caster.seat].refresh() # the hex is used up
+	match effect:
+		Hex.Effect.SHIMMER:
+			_seats[target.seat].set_status("SHIMMERING", Color.WHITE)
+			_seats[target.seat].refresh()
+	if not caster.is_human():
+		_notices.enqueue("%s cast %s on %s" % [caster.display_name, Hex.display_name(effect).to_lower(),
+			target.display_name if target else "the table"])
+
+
+## A shot at a shimmering player spread to [param target_player]: a pale tracer from them, and
+## the hit lands as if shot.
+func _on_shot_spread(source: PokerPlayer, target_player: PokerPlayer, result: Item.ShotResult) -> void:
+	var target := _seats[target_player.seat]
+	_darken_for_shot()
+	_shot_tracer.fire(_seats[source.seat].portrait_center(), target.portrait_center(), SHIMMER_TRACER_COLOR)
+	_show_hit(target, result)
+
+
 ## End of the hand: every card on the table fades out, then the next hand is dealt.
 func _clear_table_then_continue() -> void:
 	for seat in _seats:
@@ -760,6 +823,16 @@ func _clear_table_then_continue() -> void:
 		view.fade_out()
 	# Bound to this scene, so it's dropped if the scene is left meanwhile.
 	get_tree().create_timer(CardView.FADE_SECONDS).timeout.connect(_table.continue_to_next_hand)
+
+
+## [param target] was shot: a flash, and what the shot did.
+static func _show_hit(target: SeatView, result: Item.ShotResult) -> void:
+	target.flash_hit()
+	match result:
+		Item.ShotResult.SHIELD_BROKE: target.set_status("SHIELD BROKE", PixelArt.HEART_RED)
+		Item.ShotResult.ELIMINATED: target.set_status("ELIMINATED", PixelArt.HEART_RED)
+		_: target.set_status("DIRECT HIT", PixelArt.HEART_RED)
+	target.refresh()
 
 
 ## The table drops to near-black on the shot, then quickly fades back.
@@ -887,23 +960,7 @@ func _pop_pot_label() -> void:
 func _show_game_over(winner: PokerPlayer) -> void:
 	if _actions_open:
 		_set_actions_open(false)
-	var modal := Control.new()
-	modal.z_index = DebugMenu.MODAL_Z
-	UiTheme.add_at(self, modal, Vector2.ZERO, get_viewport_rect().size)
-	var dim := ColorRect.new()
-	dim.color = Color(0, 0, 0, 0.6)
-	dim.set_anchors_preset(PRESET_FULL_RECT)
-	modal.add_child(dim)
-	var center := CenterContainer.new()
-	center.set_anchors_preset(PRESET_FULL_RECT)
-	modal.add_child(center)
-	var panel := PanelContainer.new()
-	center.add_child(panel)
 	var box := VBoxContainer.new()
-	box.alignment = BoxContainer.ALIGNMENT_CENTER
-	box.add_theme_constant_override("separation", 8)
-	panel.add_child(box)
-
 	var title := Label.new()
 	title.text = "TABLE CLEARED" if winner.is_human() else "BUSTED!"
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -921,8 +978,30 @@ func _show_game_over(winner: PokerPlayer) -> void:
 			GameConfig.table_number = _level.number + 1
 		get_tree().reload_current_scene())
 	box.add_child(next)
-	next.grab_focus()
 	if not winner.is_human():
 		var menu := _new_button("MAIN MENU")
 		menu.pressed.connect(func() -> void: get_tree().change_scene_to_file("res://scenes/main_menu.tscn"))
 		box.add_child(menu)
+	_show_modal(box)
+	next.grab_focus()
+
+
+## Shows [param box] in a panel in the middle of the screen, over the dimmed table, taking all
+## input. Returns the modal, to free when done.
+func _show_modal(box: VBoxContainer) -> Control:
+	var modal := Control.new()
+	modal.z_index = DebugMenu.MODAL_Z
+	UiTheme.add_at(self, modal, Vector2.ZERO, get_viewport_rect().size)
+	var dim := ColorRect.new()
+	dim.color = Color(0, 0, 0, 0.6)
+	dim.set_anchors_preset(PRESET_FULL_RECT)
+	modal.add_child(dim)
+	var center := CenterContainer.new()
+	center.set_anchors_preset(PRESET_FULL_RECT)
+	modal.add_child(center)
+	var panel := PanelContainer.new()
+	center.add_child(panel)
+	box.alignment = BoxContainer.ALIGNMENT_CENTER
+	box.add_theme_constant_override("separation", 8)
+	panel.add_child(box)
+	return modal

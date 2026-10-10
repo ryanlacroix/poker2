@@ -1,12 +1,12 @@
 class_name ShotTracer
 extends Control
-## A gunshot tracer: a glowing red line flashed between shooter and target that quickly fades.
-## Full-screen and click-through; [method fire] draws one.
+## Gunshot tracers: glowing lines flashed between shooter and target that quickly fade.
+## Full-screen and click-through; [method fire] draws one, joining any still fading out.
 
 const FADE_SECONDS := 0.35
 
-var _from: Vector2
-var _to: Vector2
+# Each line: [from, to, color].
+var _lines: Array[Array] = []
 var _tween: Tween
 
 
@@ -15,10 +15,12 @@ func _ready() -> void:
 	visible = false
 
 
-## Flashes the tracer from [param from] to [param to] (local coordinates).
-func fire(from: Vector2, to: Vector2) -> void:
-	_from = from.floor()
-	_to = to.floor()
+## Flashes a tracer from [param from] to [param to] (local coordinates), red unless
+## [param color] says otherwise.
+func fire(from: Vector2, to: Vector2, color := PixelArt.HEART_RED) -> void:
+	if not visible:
+		_lines.clear()
+	_lines.append([from.floor(), to.floor(), color])
 	if _tween:
 		_tween.kill()
 	modulate = Color.WHITE
@@ -31,9 +33,13 @@ func fire(from: Vector2, to: Vector2) -> void:
 
 
 func _draw() -> void:
-	# Wide faint glow, a brighter band, then a hot near-white core.
-	draw_line(_from, _to, Color(PixelArt.HEART_RED, 0.35), 11)
-	draw_line(_from, _to, Color(PixelArt.HEART_RED, 0.6), 7)
-	draw_line(_from, _to, Color(PixelArt.HEART_RED, 0.9), 5)
-	draw_line(_from, _to, Color("ff6a6a"), 3)
-	draw_line(_from, _to, Color("ffe0e0"), 1)
+	for line in _lines:
+		var from: Vector2 = line[0]
+		var to: Vector2 = line[1]
+		var color: Color = line[2]
+		# Wide faint glow, a brighter band, then a hot near-white core.
+		draw_line(from, to, Color(color, 0.35), 11)
+		draw_line(from, to, Color(color, 0.6), 7)
+		draw_line(from, to, Color(color, 0.9), 5)
+		draw_line(from, to, color.lerp(Color.WHITE, 0.35), 3)
+		draw_line(from, to, color.lerp(Color.WHITE, 0.85), 1)

@@ -27,6 +27,12 @@ signal item_turn_started(player: PokerPlayer, can_use: bool)
 signal shot(shooter: PokerPlayer, target: PokerPlayer, result: Item.ShotResult)
 ## A stimpak was used up, and whether it won back a heart (it does nothing at full health).
 signal stimpak_used(player: PokerPlayer, healed: bool)
+## A hex was cast (and used up); [param target] is null for a hex that doesn't need one.
+signal hex_cast(caster: PokerPlayer, effect: Hex.Effect, target: PokerPlayer)
+## A shot at a shimmering player ([param source]) also hit [param target].
+signal shot_spread(source: PokerPlayer, target: PokerPlayer, result: Item.ShotResult)
+## The shimmer on [param player] wore off, as they were shot.
+signal shimmer_ended(player: PokerPlayer)
 signal item_dropped(player: PokerPlayer, item: Item.Kind)
 signal item_phase_finished
 ## Emitted between hands when [member wait_for_next_hand] is on; call [method continue_to_next_hand].
@@ -44,8 +50,10 @@ var hole_card_stagger := 0.0
 var npc_think_time := 0.8
 var showdown_delay := 2.0
 var between_hands_delay := 1.5
-## Pause after a gunshot or a stimpak in the item phase, so it can be seen before the next turn.
+## Pause after a gunshot, a stimpak or a hex in the item phase, so it can be seen before the next turn.
 var shot_delay := 0.9
+## Pause between a shot at a shimmering player and the shots it spreads to.
+var spread_delay := 0.35
 ## 0 = unlimited.
 var max_hands := 0
 ## Pause after each hand for the view: before the item phase (until [method begin_item_phase])
@@ -111,11 +119,43 @@ func submit_item_decision(decision: ItemDecision) -> void:
 		_human_item_decision.set_result(decision)
 
 
+## Puts [param item] in [param p]'s hands, picked up at the end of this hand. A hex gets its
+## secret effect now.
+func give_item(p: PokerPlayer, item: Item.Kind) -> void:
+	p.item = item
+	p.item_gained_on_hand = hand_number
+	if item == Item.Kind.HEX:
+		p.hex = Hex.random()
+
+
 ## [param shooter] fires their gun (used up) at [param target] (call between hands).
-## A shield breaks and absorbs the shot; otherwise it takes a heart.
+## A shield breaks and absorbs the shot; otherwise it takes a heart. If [param target] is
+## shimmering, follow up with [method spread_shimmer].
 func shoot(shooter: PokerPlayer, target: PokerPlayer) -> Item.ShotResult:
 	if shooter.item == Item.Kind.GUN:
 		shooter.item = Item.NONE
+	return _hit(target, shooter)
+
+
+## The shot at shimmering [param target] also hits up to [constant Hex.SHIMMER_SPREAD] other random
+## players still in the game, never whoever cast the shimmer or [param shooter]. That uses the
+## shimmer up. Returns each one hit and their [enum Item.ShotResult].
+func spread_shimmer(shooter: PokerPlayer, target: PokerPlayer) -> Dictionary:
+	var hits := {}
+	if not target.is_shimmering():
+		return hits
+	var caster := target.shimmered_by
+	target.shimmered_by = null
+	var others := players.filter(func(p: PokerPlayer) -> bool:
+		return p != target and p != caster and p != shooter and in_game(p))
+	others.shuffle()
+	for p: PokerPlayer in others.slice(0, Hex.SHIMMER_SPREAD):
+		hits[p] = _hit(p, shooter)
+	return hits
+
+
+## A shot at [param target] by [param shooter]: breaks their shield, or takes a heart.
+func _hit(target: PokerPlayer, shooter: PokerPlayer) -> Item.ShotResult:
 	if target.item == Item.Kind.SHIELD:
 		target.item = Item.NONE
 		chips_changed.emit()
@@ -149,6 +189,21 @@ func use_stimpak(p: PokerPlayer) -> bool:
 	return healed
 
 
+## [param caster] uses up their hex (call between hands), casting its effect on [param target]
+## if it needs one. Returns false, keeping the hex, if [param target] can't be picked.
+func cast_hex(caster: PokerPlayer, target: PokerPlayer) -> bool:
+	if caster.item != Item.Kind.HEX:
+		return false
+	if Hex.needs_target(caster.hex) and target not in hex_targets(caster):
+		return false
+	caster.item = Item.NONE
+	match caster.hex:
+		Hex.Effect.SHIMMER:
+			target.shimmered_by = caster
+	chips_changed.emit()
+	return true
+
+
 ## Still playing: has chips and hearts left.
 static func in_game(p: PokerPlayer) -> bool:
 	return p.chips > 0 and p.hearts > 0
@@ -159,11 +214,20 @@ func gun_targets(shooter: PokerPlayer) -> Array[PokerPlayer]:
 	return players.filter(func(t: PokerPlayer) -> bool: return t != shooter and in_game(t))
 
 
+## Everyone [param caster] could cast their hex on.
+func hex_targets(caster: PokerPlayer) -> Array[PokerPlayer]:
+	return gun_targets(caster)
+
+
 ## Whether [param p] may use their item now (between hands): it has a use, they've held it
-## since an earlier hand, and (for a gun) there's someone to shoot.
+## since an earlier hand, and (for a gun, or a hex cast on someone) there's someone to pick.
 func can_use_item(p: PokerPlayer) -> bool:
-	return p.has_item() and Item.can_be_used(p.item) and p.can_use_item(hand_number) \
-		and (p.item != Item.Kind.GUN or not gun_targets(p).is_empty())
+	if not (p.has_item() and Item.can_be_used(p.item) and p.can_use_item(hand_number)):
+		return false
+	match p.item:
+		Item.Kind.GUN: return not gun_targets(p).is_empty()
+		Item.Kind.HEX: return not Hex.needs_target(p.hex) or not hex_targets(p).is_empty()
+	return true
 
 
 func _exit_tree() -> void:
@@ -432,7 +496,7 @@ func _item_phase_turns() -> void:
 			decision = await _human_item_decision.wait()
 			_human_item_decision = null
 		else:
-			decision = p.brain.decide_item(p, can_use, gun_targets(p))
+			decision = p.brain.decide_item(p, can_use, gun_targets(p) if item == Item.Kind.GUN else hex_targets(p))
 			if decision.action == Item.Action.KEEP:
 				continue
 			item_turn_started.emit(p, can_use)
@@ -449,10 +513,21 @@ func _apply_item_decision(p: PokerPlayer, item: Item.Kind, can_use: bool, decisi
 			if can_use and item == Item.Kind.GUN and target != null and target != p and in_game(target):
 				var result := shoot(p, target)
 				shot.emit(p, target, result)
+				if target.is_shimmering():
+					await _wait(spread_delay)
+					var hits := spread_shimmer(p, target)
+					for hit: PokerPlayer in hits:
+						shot_spread.emit(target, hit, hits[hit])
+					shimmer_ended.emit(target)
 				await _wait(shot_delay)
 			elif can_use and item == Item.Kind.STIMPAK:
 				stimpak_used.emit(p, use_stimpak(p))
 				await _wait(shot_delay)
+			elif can_use and item == Item.Kind.HEX:
+				var effect := p.hex
+				if cast_hex(p, target):
+					hex_cast.emit(p, effect, target if Hex.needs_target(effect) else null)
+					await _wait(shot_delay)
 		Item.Action.DROP:
 			p.item = Item.NONE
 			item_dropped.emit(p, item)
@@ -464,8 +539,7 @@ func _hand_out_items() -> void:
 	for p in players:
 		if p.chips <= 0 or p.has_item() or randf() >= item_chance:
 			continue
-		p.item = Item.random()
-		p.item_gained_on_hand = hand_number
+		give_item(p, Item.random())
 		item_gained.emit(p, p.item)
 
 

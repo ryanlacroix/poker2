@@ -14,6 +14,10 @@ var max_hearts := 3
 var item: int = Item.NONE
 ## Number of the hand at whose end [member item] was picked up.
 var item_gained_on_hand := 0
+## What [member item] casts when it's a hex: rolled on pickup, secret until it's used.
+var hex := Hex.Effect.SHIMMER
+## Whoever put a shimmer on this player, or null if none is on them (see [constant Hex.Effect.SHIMMER]).
+var shimmered_by: PokerPlayer
 
 var hole_cards: Array[Card] = []
 ## Chips put in during the current betting round.
@@ -42,6 +46,10 @@ func is_human() -> bool:
 ## Has lost at least one heart (so a stimpak would help).
 func is_hurt() -> bool:
 	return hearts < max_hearts
+
+
+func is_shimmering() -> bool:
+	return shimmered_by != null
 
 
 func has_item() -> bool:
