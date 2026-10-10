@@ -7,7 +7,15 @@ enum Effect {
 	## The caster picks another player, who shimmers until they're next shot: that shot also hits
 	## up to [constant SHIMMER_SPREAD] other random players, never the caster or the shooter.
 	SHIMMER,
+	## The caster picks another player and, for [constant LEECH_HANDS] hands, takes
+	## [constant LEECH_PERCENT]% of that player's chips after each one.
+	LEECH,
 }
+
+## How many hands a leech drains its victim for.
+const LEECH_HANDS := 3
+## Share of the victim's chips a leech takes each time, rounded down.
+const LEECH_PERCENT := 10
 
 ## Extra players hit by the shot at a shimmering player.
 const SHIMMER_SPREAD := 3
@@ -22,7 +30,7 @@ static func random(rng: RandomNumberGenerator = null) -> Effect:
 ## Whether casting [param effect] needs another player picked.
 static func needs_target(effect: Effect) -> bool:
 	match effect:
-		Effect.SHIMMER: return true
+		Effect.SHIMMER, Effect.LEECH: return true
 	assert(false, "unknown hex %d" % effect)
 	return false
 
@@ -31,6 +39,7 @@ static func needs_target(effect: Effect) -> bool:
 static func display_name(effect: Effect) -> String:
 	match effect:
 		Effect.SHIMMER: return "SHIMMER"
+		Effect.LEECH: return "LEECH"
 	assert(false, "unknown hex %d" % effect)
 	return ""
 
@@ -41,5 +50,8 @@ static func description(effect: Effect) -> String:
 		Effect.SHIMMER:
 			return "Pick another player to shimmer. The next shot fired at them also hits %d other random players, but never you or the shooter. Then the shimmer fades." \
 				% SHIMMER_SPREAD
+		Effect.LEECH:
+			return "Pick another player to leech. After each of the next %d hands, you steal %d%% of their money." \
+				% [LEECH_HANDS, LEECH_PERCENT]
 	assert(false, "unknown hex %d" % effect)
 	return ""

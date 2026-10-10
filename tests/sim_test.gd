@@ -32,6 +32,8 @@ func _test_evaluator() -> void:
 	_test_item_odds()
 	_test_shimmer()
 	_test_shimmer_phase()
+	_test_leech()
+	_test_leech_phase()
 	_expect_best_five("Ah Kd 7c 7s 2d 3h Ac", "Ah Ac 7c 7s Kd")
 	_expect_best_five("2h 3h 4h 5h 7h 6d 8c", "7h 5h 4h 3h 2h")
 	_expect_best_five("Ah 2d 3c 4s 5h Kd Kc", "Ah 2d 3c 4s 5h")
@@ -78,6 +80,7 @@ func _play_hands(hands: int, item_chance: float, players: Array[PokerPlayer], do
 	table.showdown_delay = 0
 	table.between_hands_delay = 0
 	table.shot_delay = 0
+	table.leech_delay = 0
 	table.max_hands = hands
 	table.item_chance = item_chance
 	add_child(table)
@@ -182,9 +185,12 @@ func _test_shimmer_phase() -> void:
 	players[0].item_gained_on_hand = -1
 	players[1].shimmered_by = players[2]
 	# Lambdas capture locals by value, so the results they record go in here.
-	var seen := {"victim": null, "spread": [], "ended": [], "gunman_folded": null}
+	# Anyone can bust in a hand of poker, so the checks only count if all four reached the item phase.
+	var seen := {"victim": null, "spread": [], "ended": [], "gunman_folded": null, "all_in_game": false}
 	_play_hands(2, 0, players, func(_table: PokerTable) -> void:
-		if seen.gunman_folded == false:
+		if not seen.all_in_game:
+			pass
+		elif seen.gunman_folded == false:
 			_check(seen.victim == players[1], "an NPC shoots the shimmering player")
 			_check(seen.spread == [players[3]], "the shot spreads to everyone but the caster and the shooter")
 			_check(not players[1].is_shimmering() and seen.ended == [players[1]], "the shot ends the shimmer")
@@ -198,7 +204,72 @@ func _test_shimmer_phase() -> void:
 			table.shimmer_ended.connect(func(p: PokerPlayer) -> void: seen.ended.append(p))
 			table.item_phase_finished.connect(func() -> void:
 				if seen.gunman_folded == null:
-					seen.gunman_folded = players[0].folded))
+					seen.gunman_folded = players[0].folded
+					seen.all_in_game = players.all(PokerTable.in_game)))
+
+
+func _test_leech() -> void:
+	var brain := NpcBrain.new()
+	var caster := PokerPlayer.new("CASTER", 1000, brain)
+	var victim := PokerPlayer.new("VICTIM", 1000, brain)
+	var rich := PokerPlayer.new("RICH", 5000, brain)
+	var table := PokerTable.new()
+	table.setup([caster, victim, rich])
+	caster.item = Item.Kind.HEX
+	caster.hex = Hex.Effect.LEECH
+	_check(not table.cast_hex(caster, caster) and caster.has_item(), "a leech can't be cast on yourself")
+	_check(table.cast_hex(caster, victim) and not caster.has_item(), "casting a leech uses up the hex")
+	_check(victim.leeched_by == caster and victim.leech_drains_left == Hex.LEECH_HANDS, "the leech lands on the victim")
+	_check(table.drain_leech(victim) == 100 and victim.chips == 900 and caster.chips == 1100, "a leech takes 10% of the victim's chips")
+	_check(table.drain_leech(victim) == 90 and victim.is_leeched(), "each drain takes 10% of what's left")
+	_check(table.drain_leech(victim) == 81 and caster.chips == 1271, "the third drain takes 10% again")
+	_check(not victim.is_leeched() and table.drain_leech(victim) == 0, "the leech drops off after 3 drains")
+
+	# NPCs leech the richest player not already leeched.
+	var bold := NpcBrain.new()
+	bold.aggression = 1
+	caster.item = Item.Kind.HEX
+	var decision := bold.decide_item(caster, true, table.hex_targets(caster))
+	_check(decision.action == Item.Action.USE and decision.target == rich, "an NPC leeches the biggest stack")
+	rich.leeched_by = victim
+	_check(bold.decide_item(caster, true, table.hex_targets(caster)).target == victim, "an NPC doesn't leech someone already leeched")
+
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 1
+	var rolled := {}
+	for i in 100:
+		rolled[Hex.random(rng)] = true
+	_check(rolled.size() == Hex.Effect.size(), "every hex effect can be rolled")
+	table.free()
+
+
+func _test_leech_phase() -> void:
+	# A leech drains at the start of each of the next 3 item phases, then drops off. (The item
+	# phase's leech step is run on its own, so no hands of poker can bust anyone meanwhile.)
+	var brain := NpcBrain.new()
+	var players: Array[PokerPlayer] = [
+		PokerPlayer.new("A", 1000, brain), PokerPlayer.new("B", 1000, brain), PokerPlayer.new("C", 0, brain),
+	]
+	var table := PokerTable.new()
+	table.leech_delay = 0
+	add_child(table)
+	table.setup(players)
+	players[1].leeched_by = players[0]
+	players[1].leech_drains_left = Hex.LEECH_HANDS
+	# A leech whose caster has gone broke drops off without draining.
+	players[0].leeched_by = players[2]
+	players[0].leech_drains_left = Hex.LEECH_HANDS
+	var drained: Array[PokerPlayer] = []
+	var ended: Array[PokerPlayer] = []
+	table.leech_drained.connect(func(_c: PokerPlayer, v: PokerPlayer, _amount: int) -> void: drained.append(v))
+	table.leech_ended.connect(func(v: PokerPlayer) -> void: ended.append(v))
+	for phase in Hex.LEECH_HANDS + 1:
+		await table._drain_leeches()
+	_check(drained == [players[1], players[1], players[1]], "a leech drains once per item phase, 3 times")
+	_check(ended == [players[0], players[1]] and not players[0].is_leeched() and not players[1].is_leeched(),
+		"a leech drops off after its last drain, or at once if its caster is out")
+	_check(players[1].chips == 729 and players[0].chips == 1271, "the drained chips go to the caster")
+	table.queue_free()
 
 
 func _test_stimpak() -> void:

@@ -33,6 +33,10 @@ signal hex_cast(caster: PokerPlayer, effect: Hex.Effect, target: PokerPlayer)
 signal shot_spread(source: PokerPlayer, target: PokerPlayer, result: Item.ShotResult)
 ## The shimmer on [param player] wore off, as they were shot.
 signal shimmer_ended(player: PokerPlayer)
+## The leech [param caster] put on [param victim] took [param amount] of their chips.
+signal leech_drained(caster: PokerPlayer, victim: PokerPlayer, amount: int)
+## The leech on [param victim] dropped off: its hands are up, or one of the pair is out.
+signal leech_ended(victim: PokerPlayer)
 signal item_dropped(player: PokerPlayer, item: Item.Kind)
 signal item_phase_finished
 ## Emitted between hands when [member wait_for_next_hand] is on; call [method continue_to_next_hand].
@@ -54,6 +58,8 @@ var between_hands_delay := 1.5
 var shot_delay := 0.9
 ## Pause between a shot at a shimmering player and the shots it spreads to.
 var spread_delay := 0.35
+## Pause after each leech drains its victim, so the transfer can be seen before the next.
+var leech_delay := 0.9
 ## 0 = unlimited.
 var max_hands := 0
 ## Pause after each hand for the view: before the item phase (until [method begin_item_phase])
@@ -200,6 +206,9 @@ func cast_hex(caster: PokerPlayer, target: PokerPlayer) -> bool:
 	match caster.hex:
 		Hex.Effect.SHIMMER:
 			target.shimmered_by = caster
+		Hex.Effect.LEECH:
+			target.leeched_by = caster
+			target.leech_drains_left = Hex.LEECH_HANDS
 	chips_changed.emit()
 	return true
 
@@ -212,6 +221,22 @@ static func in_game(p: PokerPlayer) -> bool:
 ## Everyone [param shooter] could shoot.
 func gun_targets(shooter: PokerPlayer) -> Array[PokerPlayer]:
 	return players.filter(func(t: PokerPlayer) -> bool: return t != shooter and in_game(t))
+
+
+## The leech on [param victim] moves [constant Hex.LEECH_PERCENT]% of their chips (rounded down)
+## to whoever cast it, and drops off after its last drain. Returns the chips taken.
+func drain_leech(victim: PokerPlayer) -> int:
+	if not victim.is_leeched():
+		return 0
+	@warning_ignore("integer_division")
+	var amount := victim.chips * Hex.LEECH_PERCENT / 100
+	victim.chips -= amount
+	victim.leeched_by.chips += amount
+	victim.leech_drains_left -= 1
+	if victim.leech_drains_left <= 0:
+		victim.leeched_by = null
+	chips_changed.emit()
+	return amount
 
 
 ## Everyone [param caster] could cast their hex on.
@@ -480,6 +505,7 @@ func _item_phase_turns() -> void:
 		waiting_for_item_phase.emit()
 		await _item_phase.wait()
 		_item_phase = null
+	await _drain_leeches()
 
 	var n := players.size()
 	for step in n:
@@ -503,6 +529,23 @@ func _item_phase_turns() -> void:
 			await _wait(npc_think_time)
 		await _apply_item_decision(p, item, can_use, decision)
 	item_phase_finished.emit()
+
+
+## Start of the item phase: each leech takes its share from its victim. A leech whose victim or
+## caster is out of the game drops off instead.
+func _drain_leeches() -> void:
+	for victim in players:
+		if not victim.is_leeched():
+			continue
+		var caster := victim.leeched_by
+		if not in_game(victim) or not in_game(caster):
+			victim.leeched_by = null
+			leech_ended.emit(victim)
+			continue
+		leech_drained.emit(caster, victim, drain_leech(victim))
+		if not victim.is_leeched():
+			leech_ended.emit(victim)
+		await _wait(leech_delay)
 
 
 ## Carries out an item-phase choice; anything not allowed right now counts as keeping the item.

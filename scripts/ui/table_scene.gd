@@ -127,6 +127,7 @@ func _ready() -> void:
 	_table.hole_card_stagger = HOLE_DEAL_STAGGER
 	_table.showdown_delay = GameConfig.showdown_delay
 	_table.between_hands_delay = GameConfig.between_hands_delay
+	_table.leech_delay = LeechBeam.SECONDS
 	_table.wait_for_next_hand = true
 	add_child(_table)
 	_table.setup(GameConfig.create_players())
@@ -347,6 +348,7 @@ func _build_ui() -> void:
 	_debug_menu = DebugMenu.new()
 	UiTheme.add_at(self, _debug_menu, Vector2.ZERO, viewport_size)
 	_debug_menu.give_item.connect(_debug_give_item)
+	_debug_menu.give_hex.connect(_debug_give_hex)
 	_debug_menu.lose_heart.connect(_debug_lose_heart)
 	_debug_menu.win_table.connect(func() -> void: _show_game_over(_table.players[0]))
 
@@ -623,6 +625,9 @@ func _connect_table() -> void:
 	_table.shot_spread.connect(_on_shot_spread)
 	_table.shimmer_ended.connect(func(player: PokerPlayer) -> void:
 		_seats[player.seat].refresh())
+	_table.leech_drained.connect(_on_leech_drained)
+	_table.leech_ended.connect(func(player: PokerPlayer) -> void:
+		_seats[player.seat].refresh())
 	_table.item_dropped.connect(func(player: PokerPlayer, item: Item.Kind) -> void:
 		_seats[player.seat].set_status("DROPPED %s" % Item.display_name(item), PixelArt.PAPER)
 		_seats[player.seat].refresh())
@@ -693,6 +698,13 @@ func _debug_give_item(item: Item.Kind) -> void:
 	_seats[0].refresh()
 	if _human_item_turn and not _targeting:
 		_show_item_buttons(_table.can_use_item(human))
+
+
+## Debug: hands the human a hex with [param effect] (see [method _debug_give_item]).
+func _debug_give_hex(effect: Hex.Effect) -> void:
+	_debug_give_item(Item.Kind.HEX)
+	if _hex_modal == null:
+		_table.players[0].hex = effect
 
 
 ## Debug: takes one of the human's hearts (so a stimpak has something to heal), but never the
@@ -801,6 +813,9 @@ func _on_hex_cast(caster: PokerPlayer, effect: Hex.Effect, target: PokerPlayer) 
 		Hex.Effect.SHIMMER:
 			_seats[target.seat].set_status("SHIMMERING", Color.WHITE)
 			_seats[target.seat].refresh()
+		Hex.Effect.LEECH:
+			_seats[target.seat].set_status("LEECHED", PixelArt.GOLD)
+			_seats[target.seat].refresh()
 	if not caster.is_human():
 		_notices.enqueue("%s cast %s on %s" % [caster.display_name, Hex.display_name(effect).to_lower(),
 			target.display_name if target else "the table"])
@@ -813,6 +828,20 @@ func _on_shot_spread(source: PokerPlayer, target_player: PokerPlayer, result: It
 	_darken_for_shot()
 	_shot_tracer.fire(_seats[source.seat].portrait_center(), target.portrait_center(), SHIMMER_TRACER_COLOR)
 	_show_hit(target, result)
+
+
+## A leech took its share: a gold beam drifts from the victim to the caster as the chips move over.
+func _on_leech_drained(caster: PokerPlayer, victim: PokerPlayer, amount: int) -> void:
+	var beam := LeechBeam.new()
+	beam.from = _seats[victim.seat].portrait_center()
+	beam.to = _seats[caster.seat].portrait_center()
+	# With the shot tracer: over the table, under the portraits.
+	beam.z_index = SeatView.DARKEN_Z
+	UiTheme.add_at(self, beam, Vector2.ZERO, get_viewport_rect().size)
+	_seats[victim.seat].set_status("LEECHED $%d" % amount, PixelArt.GOLD)
+	_seats[caster.seat].set_status("LEECH +$%d" % amount, PixelArt.GOLD)
+	_seats[victim.seat].refresh()
+	_seats[caster.seat].refresh()
 
 
 ## End of the hand: every card on the table fades out, then the next hand is dealt.

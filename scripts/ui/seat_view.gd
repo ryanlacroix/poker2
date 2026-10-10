@@ -241,12 +241,17 @@ func _hit_active() -> bool:
 
 
 func _animating() -> bool:
-	return _is_winner or _is_target or _hit_active() or _shimmering()
+	return _is_winner or _is_target or _hit_active() or _shimmering() or _leeched()
 
 
 ## Under a shimmer and still in the game (a shimmer on someone knocked out stops showing).
 func _shimmering() -> bool:
 	return player.is_shimmering() and PokerTable.in_game(player)
+
+
+## Under a leech and still in the game.
+func _leeched() -> bool:
+	return player.is_leeched() and PokerTable.in_game(player)
 
 
 # Only redraw every frame while something is animating.
@@ -350,7 +355,11 @@ func _draw_portrait(c: CanvasItem) -> void:
 		_draw_broke_sign(c, frame)
 	if _shimmering():
 		_draw_shimmer(c, frame)
+	if _leeched():
+		_draw_leech_glow(c, frame)
 	_draw_item(c, frame)
+	if _leeched():
+		_draw_leech(c, frame)
 	if _hit_active():
 		var k := 1.0 - (Time.get_ticks_msec() / 1000.0 - _hit_at) / HIT_SECONDS
 		var blink := int(Time.get_ticks_msec() / 80.0) % 2 == 0
@@ -455,6 +464,32 @@ func _draw_shimmer(c: CanvasItem, frame: Rect2) -> void:
 			if alpha > 0:
 				c.draw_rect(Rect2(frame.position + Vector2(x, y) * px, Vector2(px, px)), Color(Color.WHITE, alpha))
 	c.draw_rect(frame, Color(Color("dde8ff"), 0.08))
+
+
+## Gold welling up from the bottom of the portrait, pulsing, with a glow spilling out under it.
+func _draw_leech_glow(c: CanvasItem, frame: Rect2) -> void:
+	const GRID := 16
+	const ROWS := 10 # art rows the glow climbs, from the bottom
+	var px := frame.size.x / GRID
+	var pulse := 0.7 + 0.3 * sin(Time.get_ticks_msec() / 1000.0 * 3.5)
+	for r in ROWS:
+		var alpha := 0.75 * pulse * pow(1.0 - float(r) / ROWS, 1.3)
+		c.draw_rect(Rect2(frame.position.x, frame.end.y - (r + 1) * px, frame.size.x, px), Color(PixelArt.GOLD, alpha))
+	# The frame's bottom edge lit gold, and light spilling out below it.
+	c.draw_rect(Rect2(frame.position.x - 1, frame.end.y, frame.size.x + 2, 1), PixelArt.GOLD)
+	for i in 4:
+		var y := frame.end.y + 1 + i
+		c.draw_rect(Rect2(frame.position.x - 2, y, frame.size.x + 4, 1), Color(PixelArt.GOLD, (0.85 - 0.22 * i) * pulse))
+
+
+## The leech, latched onto the bottom of the portrait on the side away from the item and
+## dangling a little below it, its tail swinging.
+func _draw_leech(c: CanvasItem, frame: Rect2) -> void:
+	const PX := 2
+	var art := PixelArt.LEECH if int(Time.get_ticks_msec() / 500.0) % 2 == 0 else PixelArt.LEECH_SWUNG
+	var art_size := Vector2(art[0].length(), art.size()) * PX
+	var x := frame.end.x - 6 - art_size.x if style == Style.COMPACT_RIGHT else frame.position.x + 6
+	PixelArt.draw_colored(c, art, PixelArt.LEECH_COLORS, Vector2(x, frame.end.y - art_size.y + 4), PX)
 
 
 ## Offsets the shimmer's twinkles so seats under a shimmer don't sparkle in lockstep.

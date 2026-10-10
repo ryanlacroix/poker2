@@ -313,6 +313,41 @@ const HEX_COLORS := {
 	"R": Color("e01c24"),
 }
 
+# A leech (5x10) hanging off a portrait, sucker up; two frames, its tail swinging.
+const LEECH: Array[String] = [
+	".KKK.",
+	"KrrrK",
+	"KgggK",
+	"KGhgK",
+	"KgggK",
+	".KGgK",
+	".KggK",
+	".KGgK",
+	"..KgK",
+	"...K.",
+]
+
+const LEECH_SWUNG: Array[String] = [
+	".KKK.",
+	"KrrrK",
+	"KgggK",
+	"KGhgK",
+	"KgggK",
+	"KgGK.",
+	"KggK.",
+	"KgGK.",
+	"KgK..",
+	".K...",
+]
+
+const LEECH_COLORS := {
+	"K": INK,
+	"r": Color("7a2030"),
+	"g": Color("4a5a2a"),
+	"G": Color("6e7e3a"),
+	"h": Color("a4b45e"),
+}
+
 ## Flash over a portrait when a stimpak wins back a heart.
 const HEAL_GREEN := Color("5ad070")
 

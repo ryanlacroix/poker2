@@ -18,6 +18,10 @@ var item_gained_on_hand := 0
 var hex := Hex.Effect.SHIMMER
 ## Whoever put a shimmer on this player, or null if none is on them (see [constant Hex.Effect.SHIMMER]).
 var shimmered_by: PokerPlayer
+## Whoever put a leech on this player, or null if none is on them (see [constant Hex.Effect.LEECH]).
+var leeched_by: PokerPlayer
+## How many more times the leech on this player will drain them.
+var leech_drains_left := 0
 
 var hole_cards: Array[Card] = []
 ## Chips put in during the current betting round.
@@ -50,6 +54,10 @@ func is_hurt() -> bool:
 
 func is_shimmering() -> bool:
 	return shimmered_by != null
+
+
+func is_leeched() -> bool:
+	return leeched_by != null
 
 
 func has_item() -> bool:

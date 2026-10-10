@@ -5,6 +5,8 @@ extends Control
 
 ## Emitted when a "give" action is picked; the menu closes itself.
 signal give_item(item: Item.Kind)
+## Emitted when a "give" action for a particular hex is picked; the menu closes itself.
+signal give_hex(effect: Hex.Effect)
 ## Emitted when LOSE A HEART is picked; the menu closes itself.
 signal lose_heart
 ## Emitted when WIN TABLE is picked (shows the win screen, to reach the next table); the
@@ -46,7 +48,10 @@ func _ready() -> void:
 	_add_button(box, "GIVE GUN", _give.bind(Item.Kind.GUN))
 	_add_button(box, "GIVE SHIELD", _give.bind(Item.Kind.SHIELD))
 	_add_button(box, "GIVE STIMPAK", _give.bind(Item.Kind.STIMPAK))
-	_add_button(box, "GIVE HEX", _give.bind(Item.Kind.HEX))
+	for effect: Hex.Effect in Hex.Effect.values():
+		_add_button(box, "GIVE %s HEX" % Hex.display_name(effect), func() -> void:
+			hide()
+			give_hex.emit(effect))
 	_add_button(box, "LOSE A HEART", func() -> void:
 		hide()
 		lose_heart.emit())
