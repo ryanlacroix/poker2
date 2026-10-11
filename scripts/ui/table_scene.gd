@@ -349,6 +349,7 @@ func _build_ui() -> void:
 	UiTheme.add_at(self, _debug_menu, Vector2.ZERO, viewport_size)
 	_debug_menu.give_item.connect(_debug_give_item)
 	_debug_menu.give_hex.connect(_debug_give_hex)
+	_debug_menu.give_chips.connect(_debug_give_chips)
 	_debug_menu.lose_heart.connect(_debug_lose_heart)
 	_debug_menu.win_table.connect(func() -> void: _show_game_over(_table.players[0]))
 
@@ -707,6 +708,12 @@ func _debug_give_hex(effect: Hex.Effect) -> void:
 		_table.players[0].hex = effect
 
 
+## Debug: adds [param amount] to the human's stack.
+func _debug_give_chips(amount: int) -> void:
+	_table.players[0].chips += amount
+	_refresh_seats()
+
+
 ## Debug: takes one of the human's hearts (so a stimpak has something to heal), but never the
 ## last one.
 func _debug_lose_heart() -> void:
@@ -805,8 +812,16 @@ func _on_shot(shooter: PokerPlayer, target_player: PokerPlayer, result: Item.Sho
 		_gun.set_process(false))
 
 
-## A hex was cast: the caster's status names it, and a shimmer lights up its target.
+## A hex was cast: the table dims under a blood-red mist while its target glows the same red (and
+## its caster, from the side facing the table), the caster's status names it, and a shimmer lights up its target.
 func _on_hex_cast(caster: PokerPlayer, effect: Hex.Effect, target: PokerPlayer) -> void:
+	# First child: over the table's own drawing, under the seats, cards and buttons.
+	var mist := HexMist.new()
+	UiTheme.add_at(self, mist, Vector2.ZERO, get_viewport_rect().size)
+	move_child(mist, 0)
+	if target:
+		_seats[target.seat].hex_glow(HexMist.DRIFT_SECONDS)
+	_seats[caster.seat].hex_glow(HexMist.DRIFT_SECONDS, true)
 	_seats[caster.seat].set_status("CAST %s" % Hex.display_name(effect), PixelArt.HEART_RED)
 	_seats[caster.seat].refresh() # the hex is used up
 	match effect:

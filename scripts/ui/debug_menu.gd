@@ -7,6 +7,8 @@ extends Control
 signal give_item(item: Item.Kind)
 ## Emitted when a "give" action for a particular hex is picked; the menu closes itself.
 signal give_hex(effect: Hex.Effect)
+## Emitted when GIVE $1000 is picked; the menu closes itself.
+signal give_chips(amount: int)
 ## Emitted when LOSE A HEART is picked; the menu closes itself.
 signal lose_heart
 ## Emitted when WIN TABLE is picked (shows the win screen, to reach the next table); the
@@ -15,6 +17,8 @@ signal win_table
 
 ## Draws over everything on the table, including portraits and the gun.
 const MODAL_Z := 10
+## Chips handed over by GIVE $.
+const GIVE_CHIPS := 1000
 
 
 func _ready() -> void:
@@ -52,6 +56,9 @@ func _ready() -> void:
 		_add_button(box, "GIVE %s HEX" % Hex.display_name(effect), func() -> void:
 			hide()
 			give_hex.emit(effect))
+	_add_button(box, "GIVE $%d" % GIVE_CHIPS, func() -> void:
+		hide()
+		give_chips.emit(GIVE_CHIPS))
 	_add_button(box, "LOSE A HEART", func() -> void:
 		hide()
 		lose_heart.emit())

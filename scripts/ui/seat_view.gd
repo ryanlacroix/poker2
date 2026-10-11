@@ -28,6 +28,13 @@ const DARKEN_Z := 1
 const OUTLINE_Z := DARKEN_Z + 3
 ## Z index of the human's hole cards, the only thing over the outline.
 const HUMAN_CARDS_Z := OUTLINE_Z + 1
+## The hex caster's magical fire, from its white-hot base out to its tips.
+const FIRE_CORE := Color("fde8ff")
+const FIRE_FLAME := Color("f65ad2")
+const FIRE_BODY := Color("b82496")
+const FIRE_TIPS := Color("6a1490")
+## Colours the odd spark of the hex caster's fire flickers to.
+const FIRE_SPARKS: Array[Color] = [Color("60f0ff"), Color("70ff9a"), Color("ffd860"), Color("b080ff")]
 
 # Set these before adding the seat to the tree.
 var player: PokerPlayer
@@ -55,6 +62,13 @@ var _is_winner := false
 var _is_target := false
 var _hit_at := -1.0
 var _flash_color := PixelArt.HEART_RED
+# When the hex glow started, and how long it lasts (-1 = not glowing).
+var _hex_glow_at := -1.0
+var _hex_glow_seconds := 0.0
+var _hex_glow_one_sided := false # the caster's glow: only on the side facing the table
+
+# Scrolled through to make the caster's hex fire lick and flicker.
+static var _fire_noise: FastNoiseLite
 
 
 static func size_for(p_style: Style) -> Vector2:
@@ -236,12 +250,30 @@ func _flash(color: Color) -> void:
 	_update_processing()
 
 
+## A hex is being cast: magical fire that swells and dies down over [param seconds], all round the
+## target's portrait, or, if [param one_sided] (the caster's), just from the side facing the middle
+## of the table.
+func hex_glow(seconds: float, one_sided := false) -> void:
+	_hex_glow_at = Time.get_ticks_msec() / 1000.0
+	_hex_glow_seconds = seconds
+	_hex_glow_one_sided = one_sided
+	_update_processing()
+
+
+## How far through the hex glow this is (0 to 1), or -1 if it isn't glowing.
+func _hex_glow_progress() -> float:
+	if _hex_glow_at < 0:
+		return -1.0
+	var k := (Time.get_ticks_msec() / 1000.0 - _hex_glow_at) / _hex_glow_seconds
+	return k if k < 1.0 else -1.0
+
+
 func _hit_active() -> bool:
 	return _hit_at >= 0 and Time.get_ticks_msec() / 1000.0 - _hit_at < HIT_SECONDS
 
 
 func _animating() -> bool:
-	return _is_winner or _is_target or _hit_active() or _shimmering() or _leeched()
+	return _is_winner or _is_target or _hit_active() or _hex_glow_progress() >= 0 or _shimmering() or _leeched()
 
 
 ## Under a shimmer and still in the game (a shimmer on someone knocked out stops showing).
@@ -338,6 +370,9 @@ func _draw_portrait(c: CanvasItem) -> void:
 		return
 	var frame := _portrait_frame()
 	var dimmed := player.folded or player.is_out
+	var hex_k := _hex_glow_progress()
+	if hex_k >= 0:
+		_draw_hex_halo(c, frame, hex_k)
 	# A hand's winner can also be a target; while picking one, the red target glow wins.
 	if _is_target:
 		_draw_target_glow(c, frame, face)
@@ -360,6 +395,8 @@ func _draw_portrait(c: CanvasItem) -> void:
 	_draw_item(c, frame)
 	if _leeched():
 		_draw_leech(c, frame)
+	if hex_k >= 0:
+		_draw_hex_tint(c, frame, hex_k)
 	if _hit_active():
 		var k := 1.0 - (Time.get_ticks_msec() / 1000.0 - _hit_at) / HIT_SECONDS
 		var blink := int(Time.get_ticks_msec() / 80.0) % 2 == 0
@@ -415,6 +452,138 @@ static func _draw_broke_sign(c: CanvasItem, frame: Rect2) -> void:
 	var sign_art := PixelArt.DOLLAR_SIGN
 	var art_size := Vector2(sign_art[0].length(), sign_art.size()) * px
 	PixelArt.draw(c, sign_art, frame.position + ((frame.size - art_size) / 2).floor(), px, Color.BLACK)
+
+
+## How strong the hex glow is [param k] of the way through: swells in, then fades, flickering.
+static func _hex_glow_strength(k: float) -> float:
+	var flicker := 0.88 + 0.12 * sin(k * 47.0)
+	return sin(k * PI) * flicker
+
+
+## The side of the portrait facing the middle of the table: inward for the side columns, up for
+## the human.
+func _table_side() -> Vector2:
+	match style:
+		Style.COMPACT_LEFT: return Vector2.RIGHT
+		Style.COMPACT_RIGHT: return Vector2.LEFT
+		_: return Vector2.UP
+
+
+## A 1-pixel line along the [param side] edge of [param frame], [param d] pixels out from it (1 is
+## just outside the frame, 0 and below inside it), reaching [param spread] past each end.
+static func _side_line(frame: Rect2, side: Vector2, d: float, spread: float) -> Rect2:
+	match side:
+		Vector2.RIGHT: return Rect2(frame.end.x - 1 + d, frame.position.y - spread, 1, frame.size.y + spread * 2)
+		Vector2.LEFT: return Rect2(frame.position.x - d, frame.position.y - spread, 1, frame.size.y + spread * 2)
+		Vector2.DOWN: return Rect2(frame.position.x - spread, frame.end.y - 1 + d, frame.size.x + spread * 2, 1)
+		_: return Rect2(frame.position.x - spread, frame.position.y - d, frame.size.x + spread * 2, 1)
+
+
+## The hex glow behind the portrait: magical fire. The caster's licks out a long way from the side
+## facing the table; the target's burns shorter, off every side, spilling round the corners.
+func _draw_hex_halo(c: CanvasItem, frame: Rect2, k: float) -> void:
+	const CASTER_reach := 31
+	const CASTER_inset := 2 # starts a little in from the ends of its edge
+	const TARGET_reach := 22
+	const TARGET_inset := -3 # runs past the ends of each edge, to meet round the corners
+	if _hex_glow_one_sided:
+		_draw_hex_fire(c, frame, k, _table_side(), CASTER_reach, CASTER_inset)
+		return
+	for side: Vector2 in [Vector2.UP, Vector2.RIGHT, Vector2.DOWN, Vector2.LEFT]:
+		_draw_hex_fire(c, frame, k, side, TARGET_reach, TARGET_inset)
+
+
+## Magical fire licking out from the [param side] of the portrait, on a 2px grid: tongues of flame
+## up to [param reach] cells long, from [param inset] cells in from each end of that edge (negative
+## to spill past them), white-hot at the base, through magenta to purple at the tips, flecked
+## with sparks of other colours, with embers drifting off the top. Grows and dies down with the glow.
+func _draw_hex_fire(c: CanvasItem, frame: Rect2, k: float, side: Vector2, reach: int, inset: int) -> void:
+	const PX := 2
+	const TAPER := 2 # cells at each end of the fire over which it dies down
+	const RISE := 26.0 # cells a second the flames' pattern travels out
+	const EMBERS := 9
+	const SPARK_CHANCE := 26 # about one cell in this many is a spark at any moment
+	const SPARK_RATE := 12.0 # times a second the sparks move to new cells
+	if _fire_noise == null:
+		_fire_noise = FastNoiseLite.new()
+		_fire_noise.noise_type = FastNoiseLite.TYPE_SIMPLEX_SMOOTH
+		_fire_noise.frequency = 0.2
+		_fire_noise.fractal_octaves = 2
+	var strength := _hex_glow_strength(k)
+	var t := k * _hex_glow_seconds
+
+	# Drawn as if the fire rises up from a horizontal edge at the origin, then turned to face [param side].
+	var length := frame.size.x if side.y != 0 else frame.size.y
+	match side:
+		Vector2.RIGHT: c.draw_set_transform(Vector2(frame.end.x + 1, frame.position.y), PI / 2)
+		Vector2.LEFT: c.draw_set_transform(Vector2(frame.position.x - 1, frame.end.y), -PI / 2)
+		Vector2.DOWN: c.draw_set_transform(Vector2(frame.end.x, frame.end.y + 1), PI)
+		_: c.draw_set_transform(Vector2(frame.position.x, frame.position.y - 1))
+	var cols := int(length / PX)
+	# Different flames for each seat and each side.
+	var side_index := int(side.angle() / (PI / 2)) + 2
+	var seed := player.seat * 37.0 + side_index * 101.0
+	var spark_step := int(t * SPARK_RATE)
+	# A soft glow behind the flames, fading out from the edge.
+	for row in reach:
+		var glow := 0.3 * strength * pow(1.0 - float(row) / reach, 2.0)
+		c.draw_rect(Rect2(inset * PX, -(row + 1) * PX, (cols - inset * 2) * PX, PX), Color(FIRE_BODY, glow))
+	for col in range(inset, cols - inset):
+		# Full height along the middle of the edge, dying down towards its ends.
+		var from_end := mini(col - inset, cols - 1 - inset - col)
+		var taper := minf(1.0, (from_end + 1.0) / (TAPER + 1))
+		# Each column's flame leaps and drops on its own, so the fire breaks into tongues.
+		var leap := 0.5 + 0.5 * _fire_noise.get_noise_2d(col * 0.7 + seed, t * 14.0)
+		var height := reach * (0.35 + 0.65 * leap) * taper * (0.4 + 0.6 * strength)
+		for row in reach:
+			# Licks of flame travel out along the tongues.
+			var lick := _fire_noise.get_noise_2d(col * 0.6 - seed, (row - t * RISE) * 0.45)
+			var heat := (1.0 - row / height) * 1.25 + lick * 0.4
+			if strength < 0.999:
+				heat *= 0.5 + 0.5 * strength
+			var color: Color
+			if heat > 1.0:
+				color = FIRE_CORE
+			elif heat > 0.72:
+				color = FIRE_FLAME
+			elif heat > 0.42:
+				color = FIRE_BODY
+			elif heat > 0.15:
+				color = Color(FIRE_TIPS, 0.85)
+			else:
+				continue
+			# Here and there, a cell flickers to another colour.
+			var roll := absi(col * 73856093 ^ row * 19349663 ^ (spark_step + player.seat * 4 + side_index) * 83492791)
+			if heat > 0.3 and roll % SPARK_CHANCE == 0:
+				color = FIRE_SPARKS[roll / SPARK_CHANCE % FIRE_SPARKS.size()]
+			c.draw_rect(Rect2(col * PX, -(row + 1) * PX, PX, PX), color)
+
+	# Embers rise off the flames in all the fire's colours, flickering and drifting side to side as
+	# they fade.
+	for i in EMBERS:
+		var life := fmod(t * 1.3 + float(i) / EMBERS, 1.0)
+		var x := (fmod(i * 7.3 + seed, cols) + sin(life * TAU + i) * 1.5) * PX
+		var y := -(reach * 0.5 + life * reach * 0.9) * PX
+		var alpha := (1.0 - life) * strength * (0.6 + 0.4 * sin(t * 30.0 + i))
+		c.draw_rect(Rect2(Vector2(x, y).floor(), Vector2(PX, PX)), Color(FIRE_FLAME if i % 2 == 0 else FIRE_SPARKS[(i / 2 + player.seat + side_index) % FIRE_SPARKS.size()], alpha))
+	c.draw_set_transform(Vector2.ZERO)
+
+
+## The hex glow over the portrait, in the fire's colours: a burning frame and the face washed with
+## it. One-sided (the caster's), just that edge burns and the wash fades in from it.
+func _draw_hex_tint(c: CanvasItem, frame: Rect2, k: float) -> void:
+	const WASH := 16 # pixels the one-sided wash reaches into the portrait
+	var strength := _hex_glow_strength(k)
+	if not _hex_glow_one_sided:
+		c.draw_rect(frame.grow(2), Color(FIRE_FLAME, strength), false, 1)
+		c.draw_rect(frame.grow(1), Color(FIRE_CORE, strength), false, 1)
+		c.draw_rect(frame, Color(FIRE_BODY, 0.4 * strength))
+		return
+	var side := _table_side()
+	c.draw_rect(_side_line(frame, side, 2, 1), Color(FIRE_FLAME, strength))
+	c.draw_rect(_side_line(frame, side, 1, 1), Color(FIRE_CORE, strength))
+	for j in WASH:
+		c.draw_rect(_side_line(frame, side, -j, 0), Color(FIRE_BODY, 0.5 * strength * pow(1.0 - float(j) / WASH, 1.5)))
 
 
 ## Red pulsing halo and tint for a seat that can be targeted, plus a red seat outline.
