@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://b2aup5uoaxjgw"
-path="res://.godot/imported/shark_injured.png-af4ba3039c312f5b41b19f0a1960f02d.ctex"
+uid="uid://dfsqwv7ptlfwg"
+path="res://.godot/imported/balrus.png-8c2fcda6b02cd44d3e0d47c2e972c538.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/portraits/shark_injured.png"
-dest_files=["res://.godot/imported/shark_injured.png-af4ba3039c312f5b41b19f0a1960f02d.ctex"]
+source_file="res://assets/portraits/balrus.png"
+dest_files=["res://.godot/imported/balrus.png-8c2fcda6b02cd44d3e0d47c2e972c538.ctex"]
 
 [params]
 

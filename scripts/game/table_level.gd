@@ -17,7 +17,7 @@ const TABLES := [
 			"res://data/npcs/rocky.tres",    # tight-passive
 			"res://data/npcs/lucky.tres",    # calling station
 			"res://data/npcs/maverick.tres", # loose-aggressive
-			"res://data/npcs/shark.tres",    # tight-aggressive, strongest reader
+			"res://data/npcs/balrus.tres",   # tight-aggressive, strongest reader
 			"res://data/npcs/doc.tres",      # balanced
 			"res://data/npcs/duke.tres",     # maniac
 		],

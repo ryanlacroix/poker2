@@ -7,7 +7,7 @@ enum Highlight { NONE, WINNING, KICKER, DIMMED }
 const CARD_SIZE := Vector2(26, 36)
 
 # A newly placed card pops in a little large, then quickly settles to its real size.
-const POP_SCALE := 1.25
+const POP_SCALE := 1.4
 const POP_SECONDS := 0.15
 ## How long [method fade_out] takes.
 const FADE_SECONDS := 0.2
