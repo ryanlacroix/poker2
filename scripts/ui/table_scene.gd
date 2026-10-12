@@ -49,6 +49,9 @@ const TABLE_NAME_EMBOLDEN := 0.8
 ## Share of the felt's pixels drawn a shade darker / lighter on a textured felt.
 const FELT_DARK_SHARE := 0.12
 const FELT_LIGHT_SHARE := 0.08
+## A shot shakes everything but the wallpaper: how far, in whole pixels, and for how long.
+const SHAKE_PIXELS := 10
+const SHAKE_SECONDS := 0.2
 ## Gap between the brass studs along the rail.
 const RAIL_STUD_SPACING := 20.0
 
@@ -95,6 +98,9 @@ var _gun: GunView
 var _shot_darken: ColorRect
 var _shot_tracer: ShotTracer
 var _shot_darken_tween: Tween
+var _shake_tween: Tween
+## The screen's current shake; the wallpaper is drawn this much the other way so it stays put.
+var _shake := Vector2.ZERO
 var _target_hint: Label
 var _win_banner: WinBanner
 var _notices: NoticeBanner
@@ -143,7 +149,10 @@ func _ready() -> void:
 
 
 func _draw() -> void:
+	# The wallpaper holds still while everything else shakes, so no screen edge ever shows.
+	draw_set_transform(-_shake)
 	draw_texture(_backdrop_texture, Vector2.ZERO)
+	draw_set_transform(Vector2.ZERO)
 	_draw_header_rule()
 	# A long table between the two NPC columns: a bevelled rail (in the style's wood) with an
 	# inlay and studs, felt, then a lighter inner felt edged with a pinstripe.
@@ -344,7 +353,8 @@ func _build_ui() -> void:
 	_shot_darken.color = Color(0, 0, 0, 0)
 	_shot_darken.mouse_filter = MOUSE_FILTER_IGNORE
 	_shot_darken.z_index = SeatView.DARKEN_Z
-	UiTheme.add_at(self, _shot_darken, Vector2.ZERO, viewport_size)
+	# Oversized, so no undarkened edge shows while the screen shakes.
+	UiTheme.add_at(self, _shot_darken, -Vector2.ONE * SHAKE_PIXELS, viewport_size + Vector2.ONE * SHAKE_PIXELS * 2)
 	_gun.z_index = SeatView.DARKEN_Z + 1
 	# Same layer as the darkening, drawn after it: over the dimmed table, under the portraits.
 	_shot_tracer = ShotTracer.new()
@@ -842,6 +852,7 @@ func _on_shot(shooter: PokerPlayer, target_player: PokerPlayer, result: Item.Sho
 	_shot_tracer.fire(_seats[shooter.seat].portrait_center(), target.portrait_center())
 	_seats[shooter.seat].refresh() # the gun is used up
 	_show_hit(target, result)
+	_shake_screen()
 
 	if not shooter.is_human():
 		return
@@ -885,6 +896,7 @@ func _on_shot_spread(source: PokerPlayer, target_player: PokerPlayer, result: It
 	_darken_for_shot()
 	_shot_tracer.fire(_seats[source.seat].portrait_center(), target.portrait_center(), SHIMMER_TRACER_COLOR)
 	_show_hit(target, result)
+	_shake_screen()
 
 
 ## A leech took its share: a gold beam drifts from the victim to the caster as the chips move over.
@@ -919,6 +931,29 @@ static func _show_hit(target: SeatView, result: Item.ShotResult) -> void:
 		Item.ShotResult.ELIMINATED: target.set_status("ELIMINATED", PixelArt.HEART_RED)
 		_: target.set_status("DIRECT HIT", PixelArt.HEART_RED)
 	target.refresh()
+
+
+## A brief, dying-away jolt of everything on screen but the wallpaper: the whole canvas is
+## offset by a random whole-pixel amount each frame, and the wallpaper drawn back the other way.
+func _shake_screen() -> void:
+	if _shake_tween:
+		_shake_tween.kill()
+	_shake_tween = create_tween()
+	_shake_tween.tween_method(func(strength: float) -> void:
+		var reach := roundi(SHAKE_PIXELS * strength)
+		_set_shake(Vector2(randi_range(-reach, reach), randi_range(-reach, reach))), 1.0, 0.0, SHAKE_SECONDS)
+	_shake_tween.tween_callback(_set_shake.bind(Vector2.ZERO))
+
+
+func _set_shake(offset: Vector2) -> void:
+	_shake = offset
+	get_viewport().canvas_transform = Transform2D(0, offset)
+	queue_redraw()
+
+
+func _exit_tree() -> void:
+	# Leaving mid-shake mustn't leave the next scene offset.
+	get_viewport().canvas_transform = Transform2D.IDENTITY
 
 
 ## The table drops to near-black on the shot, then quickly fades back.
