@@ -1,6 +1,7 @@
 class_name UiTheme
 extends RefCounted
-## Builds the global theme used by every Control: gilded pixel frames (see [Ornament]).
+## Builds the theme used by every Control: gilded pixel frames (see [Ornament]) in the colours of
+## [member InterfaceStyle.current].
 
 ## Drop a pixel font here (e.g. m5x7, Pixel Operator) and it is picked up automatically.
 const FONT_PATH := "res://assets/fonts/pixel_font.ttf"
@@ -16,10 +17,11 @@ static func build() -> Theme:
 	if ResourceLoader.exists(FONT_PATH):
 		theme.default_font = load(FONT_PATH)
 
-	theme.set_stylebox("normal", "Button", Ornament.frame_box(Color("2d3a5a"), PixelArt.GOLD, Ornament.GOLD_DARK))
-	theme.set_stylebox("hover", "Button", Ornament.frame_box(Color("3d4f7a"), Ornament.GOLD_LIGHT, PixelArt.GOLD))
-	theme.set_stylebox("pressed", "Button", Ornament.frame_box(Color("1f2840"), Ornament.GOLD_DARK, Ornament.GOLD_DARK))
-	theme.set_stylebox("disabled", "Button", Ornament.frame_box(Color("23283a"), Color("555a6a"), Color("3a3e4c")))
+	var style := InterfaceStyle.current
+	theme.set_stylebox("normal", "Button", Ornament.frame_box(style.button_normal, style.trim, style.trim_dark))
+	theme.set_stylebox("hover", "Button", Ornament.frame_box(style.button_hover, style.trim_light, style.trim))
+	theme.set_stylebox("pressed", "Button", Ornament.frame_box(style.button_pressed, style.trim_dark, style.trim_dark))
+	theme.set_stylebox("disabled", "Button", Ornament.frame_box(style.button_disabled, Color("555a6a"), Color("3a3e4c")))
 	theme.set_stylebox("focus", "Button", StyleBoxEmpty.new())
 	theme.set_color("font_color", "Button", PixelArt.PAPER)
 	theme.set_color("font_hover_color", "Button", PixelArt.GOLD)
@@ -28,23 +30,23 @@ static func build() -> Theme:
 	theme.set_color("font_disabled_color", "Button", Color("6a6f80"))
 	theme.set_color("font_outline_color", "Button", PixelArt.INK)
 	theme.set_constant("outline_size", "Button", 2)
-	theme.set_stylebox("panel", "Panel", Ornament.frame_box(Color("141826e8"), Ornament.BRASS, Ornament.BRASS_DARK))
-	theme.set_stylebox("panel", "PanelContainer", Ornament.frame_box(Color("141826f0"), PixelArt.GOLD, Ornament.GOLD_DARK, 10, 10))
+	theme.set_stylebox("panel", "Panel", Ornament.frame_box(Color(style.panel, 0.91), style.brass, style.brass_dark))
+	theme.set_stylebox("panel", "PanelContainer", Ornament.frame_box(Color(style.panel, 0.94), style.trim, style.trim_dark, 10, 10))
 	theme.set_color("font_color", "Label", PixelArt.PAPER)
 
 	# Raise slider: a sunken groove filled with gold up to a gem grabber.
-	var groove := _box(Color("0c0f1a"), Ornament.BRASS_DARK)
+	var groove := _box(style.groove, style.brass_dark)
 	groove.content_margin_top = 2
 	groove.content_margin_bottom = 2
 	theme.set_stylebox("slider", "HSlider", groove)
-	var filled := _box(Ornament.GOLD_DARK, Ornament.BRASS_DARK)
-	filled.border_color = PixelArt.GOLD
+	var filled := _box(style.trim_dark, style.brass_dark)
+	filled.border_color = style.trim
 	filled.set_border_width_all(0)
 	filled.border_width_top = 1
 	theme.set_stylebox("grabber_area", "HSlider", filled)
 	theme.set_stylebox("grabber_area_highlight", "HSlider", filled)
 	theme.set_icon("grabber", "HSlider", Ornament.gem_texture(6))
-	theme.set_icon("grabber_highlight", "HSlider", Ornament.gem_texture(6, Ornament.GOLD_LIGHT))
+	theme.set_icon("grabber_highlight", "HSlider", Ornament.gem_texture(6, true))
 	return theme
 
 

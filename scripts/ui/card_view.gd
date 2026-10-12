@@ -168,26 +168,28 @@ func _draw_empty_slot(rect: Rect2) -> void:
 	if not show_empty_slot:
 		return
 	draw_rect(rect, Color(0, 0, 0, 0.25))
-	draw_rect(rect, Color(PixelArt.GOLD, 0.18), false, 1)
-	Ornament.draw_corner_brackets(self, rect, Color(PixelArt.GOLD, 0.5), 3)
-	Ornament.draw_diamond(self, (rect.get_center() - Vector2.ONE * 0.5).floor(), 2, Color(PixelArt.GOLD, 0.15))
+	var trim := InterfaceStyle.current.trim
+	draw_rect(rect, Color(trim, 0.18), false, 1)
+	Ornament.draw_corner_brackets(self, rect, Color(trim, 0.5), 3)
+	Ornament.draw_diamond(self, (rect.get_center() - Vector2.ONE * 0.5).floor(), 2, Color(trim, 0.15))
 
 
 func _draw_card(rect: Rect2) -> void:
 	draw_rect(rect, PixelArt.INK)
 	var inner := rect.grow(-1)
 	if not _face_up:
-		# A gilt-edged back: a light inner border round a trellis, with a gold gem in the middle.
-		draw_rect(inner, PixelArt.BACK)
+		# A gilt-edged back: a light inner border round a trellis, with a gem in the middle.
+		var style := InterfaceStyle.current
+		draw_rect(inner, style.card_back)
 		var frame := rect.grow(-2)
-		draw_rect(frame, PixelArt.BACK_LIGHT, false, 1)
+		draw_rect(frame, style.card_back_light, false, 1)
 		for y in range(int(frame.position.y) + 2, int(frame.end.y) - 2):
 			for x in range(int(frame.position.x) + 2, int(frame.end.x) - 2):
 				if (x + y) % 4 == 0 and (x - y) % 4 == 0:
-					draw_rect(Rect2(x, y, 1, 1), PixelArt.BACK_LIGHT)
-		Ornament.draw_corner_brackets(self, frame, PixelArt.GOLD, 2)
+					draw_rect(Rect2(x, y, 1, 1), style.card_back_light)
+		Ornament.draw_corner_brackets(self, frame, style.trim, 2)
 		var centre := (rect.get_center() - Vector2.ONE * 0.5).floor()
-		Ornament.draw_diamond(self, centre, 4, PixelArt.BACK)
+		Ornament.draw_diamond(self, centre, 4, style.card_back)
 		Ornament.draw_gem(self, centre, 2)
 		return
 
@@ -206,24 +208,25 @@ func _draw_fine_card(rect: Rect2) -> void:
 	if not _face_up:
 		# A gilt frame round a fine trellis, gold brackets in its corners and a jewelled
 		# medallion in the middle.
-		_fill_rounded(inner, PixelArt.BACK)
+		var style := InterfaceStyle.current
+		_fill_rounded(inner, style.card_back)
 		var gilt := rect.grow(-3)
-		draw_rect(gilt, Ornament.GOLD_DARK, false, 1)
-		draw_rect(Rect2(gilt.position, Vector2(gilt.size.x - 1, 1)), PixelArt.GOLD)
-		draw_rect(Rect2(gilt.position, Vector2(1, gilt.size.y - 1)), PixelArt.GOLD)
+		draw_rect(gilt, style.trim_dark, false, 1)
+		draw_rect(Rect2(gilt.position, Vector2(gilt.size.x - 1, 1)), style.trim)
+		draw_rect(Rect2(gilt.position, Vector2(1, gilt.size.y - 1)), style.trim)
 		var frame := gilt.grow(-2)
-		draw_rect(frame, PixelArt.BACK_LIGHT, false, 1)
+		draw_rect(frame, style.card_back_light, false, 1)
 		for y in range(int(frame.position.y) + 2, int(frame.end.y) - 2):
 			for x in range(int(frame.position.x) + 2, int(frame.end.x) - 2):
 				if (x + y) % 6 == 0 or (x - y) % 6 == 0:
-					draw_rect(Rect2(x, y, 1, 1), PixelArt.BACK_LIGHT)
-		Ornament.draw_corner_brackets(self, frame.grow(-2), PixelArt.GOLD, 4)
+					draw_rect(Rect2(x, y, 1, 1), style.card_back_light)
+		Ornament.draw_corner_brackets(self, frame.grow(-2), style.trim, 4)
 		var centre := (rect.get_center() - Vector2.ONE * 0.5).floor()
-		Ornament.draw_diamond(self, centre, 9, PixelArt.BACK)
+		Ornament.draw_diamond(self, centre, 9, style.card_back)
 		Ornament.draw_diamond(self, centre, 8, PixelArt.INK)
-		Ornament.draw_diamond(self, centre, 7, Ornament.GOLD_DARK)
-		Ornament.draw_diamond(self, centre, 6, PixelArt.BACK)
-		Ornament.draw_gem(self, centre, 3, PixelArt.RED)
+		Ornament.draw_diamond(self, centre, 7, style.trim_dark)
+		Ornament.draw_diamond(self, centre, 6, style.card_back)
+		Ornament.draw_gem(self, centre, 3, style.card_back_gem)
 		return
 
 	_fill_rounded(inner, PixelArt.PAPER_SHADE)

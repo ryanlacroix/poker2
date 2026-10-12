@@ -55,7 +55,7 @@ func _draw() -> void:
 	draw_rect(Rect2(Vector2.ZERO, size), Color(0, 0, 0, 0.6))
 	# Gilt edging along the top and bottom of the strip.
 	for y: float in [0.0, size.y - 2]:
-		draw_rect(Rect2(0, y, size.x, 1), PixelArt.GOLD if y == 0 else Ornament.GOLD_DARK)
+		draw_rect(Rect2(0, y, size.x, 1), InterfaceStyle.current.trim if y == 0 else InterfaceStyle.current.trim_dark)
 		draw_rect(Rect2(0, y + 1, size.x, 1), Color(PixelArt.INK, 0.8))
 	var font := get_theme_default_font()
 	var font_size := UiTheme.FONT_SIZE

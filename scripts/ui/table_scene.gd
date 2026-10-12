@@ -46,17 +46,14 @@ const TABLE_LABEL_FONT_SIZE := 18
 const TABLE_NAME_SHADOW_OFFSET := 2
 ## How much thicker the table's name is drawn (the UI font has no bold of its own).
 const TABLE_NAME_EMBOLDEN := 0.8
-## Dark blue damask wallpaper behind the table, filling the screen.
-const BACKDROP := Color("16203a")
 ## Share of the felt's pixels drawn a shade darker / lighter on a textured felt.
 const FELT_DARK_SHARE := 0.12
 const FELT_LIGHT_SHARE := 0.08
-## The table's rail, outside in: dark edge, lit top of the wood, the wood, its shadow, gold inlay.
-const RAIL_COLORS: Array[Color] = [Color("2a1608"), Color("9a6a3a"), Color("6e4626"), Color("4a2c16"), Color("c8a050")]
 ## Gap between the brass studs along the rail.
 const RAIL_STUD_SPACING := 20.0
 
 var _level: TableLevel = GameConfig.table_level()
+var _style := InterfaceStyle.for_table(_level.number)
 var _table: PokerTable
 var _layout: PortraitLayout
 var _backdrop_texture: Texture2D
@@ -137,6 +134,9 @@ func _ready() -> void:
 	add_child(_table)
 	_table.setup(GameConfig.create_players())
 
+	# Dress the whole table in its level's style before anything is built.
+	InterfaceStyle.current = _style
+	theme = UiTheme.build()
 	_build_ui()
 	_connect_table()
 	_play_intro()
@@ -145,33 +145,33 @@ func _ready() -> void:
 func _draw() -> void:
 	draw_texture(_backdrop_texture, Vector2.ZERO)
 	_draw_header_rule()
-	# A long table between the two NPC columns: a bevelled wooden rail with a gold inlay and
-	# brass studs, felt, then a lighter inner felt edged with a gold pinstripe.
+	# A long table between the two NPC columns: a bevelled rail (in the style's wood) with an
+	# inlay and studs, felt, then a lighter inner felt edged with a pinstripe.
 	var table := _layout.table
-	for i in RAIL_COLORS.size():
-		draw_colored_polygon(_chamfered(table.grow(-i), 6 - i * 0.5), RAIL_COLORS[i])
+	for i in _style.rail.size():
+		draw_colored_polygon(_chamfered(table.grow(-i), 6 - i * 0.5), _style.rail[i])
 	_draw_rail_studs(table)
-	_draw_felt(_chamfered(table.grow(-RAIL_COLORS.size()), 4), _level.felt, _felt_texture)
+	_draw_felt(_chamfered(table.grow(-_style.rail.size()), 4), _level.felt, _felt_texture)
 	var inner := table.grow(-9)
-	draw_colored_polygon(_chamfered(inner.grow(1), 4), Color(PixelArt.GOLD, 0.35))
+	draw_colored_polygon(_chamfered(inner.grow(1), 4), _style.pinstripe)
 	_draw_felt(_chamfered(inner, 4), _level.felt_inner, _felt_inner_texture)
-	draw_colored_polygon(_chamfered(inner.grow(-3), 3), Color(PixelArt.GOLD, 0.12))
+	draw_colored_polygon(_chamfered(inner.grow(-3), 3), Color(_style.pinstripe, _style.pinstripe.a * 0.35))
 	_draw_felt(_chamfered(inner.grow(-4), 3), _level.felt_inner, _felt_inner_texture)
 
 
-## Brass studs along the rail's long straight top and bottom runs, each with a glint.
+## Studs (in the style's gem colours) along the rail's long straight top and bottom runs, each with a glint.
 func _draw_rail_studs(table: Rect2) -> void:
 	var y_top := table.position.y + 2
 	var y_bottom := table.end.y - 3
 	var x := table.position.x + RAIL_STUD_SPACING
 	while x < table.end.x - RAIL_STUD_SPACING / 2.0:
 		for y in [y_top, y_bottom]:
-			draw_rect(Rect2(x - 1, y - 1, 3, 3), Color("3a2210"))
-			draw_rect(Rect2(x, y, 1, 1), Ornament.GOLD_LIGHT)
-			draw_rect(Rect2(x - 1, y, 1, 1), PixelArt.GOLD)
-			draw_rect(Rect2(x, y - 1, 1, 1), PixelArt.GOLD)
-			draw_rect(Rect2(x + 1, y, 1, 1), Ornament.GOLD_DARK)
-			draw_rect(Rect2(x, y + 1, 1, 1), Ornament.GOLD_DARK)
+			draw_rect(Rect2(x - 1, y - 1, 3, 3), _style.rail_socket)
+			draw_rect(Rect2(x, y, 1, 1), _style.gem_light)
+			draw_rect(Rect2(x - 1, y, 1, 1), _style.gem)
+			draw_rect(Rect2(x, y - 1, 1, 1), _style.gem)
+			draw_rect(Rect2(x + 1, y, 1, 1), _style.gem_dark)
+			draw_rect(Rect2(x, y + 1, 1, 1), _style.gem_dark)
 		x += RAIL_STUD_SPACING
 
 
@@ -239,7 +239,7 @@ func _build_ui() -> void:
 	var viewport_size := get_viewport_rect().size
 	_layout = PortraitLayout.new(viewport_size, _table.players.size() - 1, insets.x, insets.y)
 	var pot_center := _layout.pot_center
-	_backdrop_texture = Ornament.wallpaper(BACKDROP, Vector2i(viewport_size.ceil()))
+	_backdrop_texture = Ornament.wallpaper(_style.backdrop, _style.motif, Vector2i(viewport_size.ceil()))
 	if _level.grain > 0:
 		var felt_size := Vector2i(_layout.table.size.ceil())
 		_felt_texture = _grained_felt(_level.felt, felt_size, _level.grain)

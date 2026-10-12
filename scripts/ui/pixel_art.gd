@@ -7,8 +7,6 @@ const INK := Color("1b1b2a")
 const PAPER := Color("f4f1e8")
 const PAPER_SHADE := Color("d8d2c4")
 const RED := Color("c0303a")
-const BACK := Color("3050a0")
-const BACK_LIGHT := Color("5078c8")
 const GOLD := Color("f0c040")
 
 # Indexed by Suit: Clubs, Diamonds, Hearts, Spades.

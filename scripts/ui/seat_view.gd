@@ -328,10 +328,11 @@ func _process(_delta: float) -> void:
 func _draw() -> void:
 	# Dark backing so labels stay readable over any part of the map.
 	var backing := Rect2(Vector2(-1, -1), seat_size() + Vector2(2, 2))
-	draw_rect(backing, Color(0.05, 0.06, 0.11, 0.78))
-	# Brass trim with gold corner brackets.
-	draw_rect(backing, Color(Ornament.BRASS, 0.35), false, 1)
-	Ornament.draw_corner_brackets(self, backing, Color(PixelArt.GOLD, 0.8), 4)
+	var style := InterfaceStyle.current
+	draw_rect(backing, style.seat_backing)
+	# Brass trim with gilt corner brackets.
+	draw_rect(backing, Color(style.brass, 0.35), false, 1)
+	Ornament.draw_corner_brackets(self, backing, Color(style.trim, 0.8), 4)
 	_portrait_layer.queue_redraw()
 	_draw_hearts()
 	if _is_dealer:
@@ -421,8 +422,8 @@ func _draw_portrait(c: CanvasItem) -> void:
 ## A gilt frame round the portrait: lit along the top and left, shadowed along the bottom and
 ## right, with gold studs at the corners. Dull pewter while [param dimmed].
 static func _draw_portrait_frame(c: CanvasItem, frame: Rect2, dimmed: bool) -> void:
-	var light := Color("8a8a96") if dimmed else Ornament.GOLD_LIGHT
-	var dark := Color("4a4a56") if dimmed else Ornament.GOLD_DARK
+	var light := Color("8a8a96") if dimmed else InterfaceStyle.current.trim_light
+	var dark := Color("4a4a56") if dimmed else InterfaceStyle.current.trim_dark
 	var outer := frame.grow(1)
 	c.draw_rect(outer, dark, false, 1)
 	c.draw_rect(Rect2(outer.position, Vector2(outer.size.x - 1, 1)), light)
@@ -461,9 +462,9 @@ func _draw_item(c: CanvasItem, frame: Rect2) -> void:
 	var plate := Rect2(
 		Vector2(frame.position.x if style == Style.COMPACT_RIGHT else frame.end.x - plate_size.x,
 			frame.end.y - plate_size.y), plate_size)
-	c.draw_rect(plate.grow(1), Ornament.GOLD_DARK)
+	c.draw_rect(plate.grow(1), InterfaceStyle.current.trim_dark)
 	c.draw_rect(plate, PixelArt.INK)
-	c.draw_rect(plate.grow(-1), Color("2d3a5a"))
+	c.draw_rect(plate.grow(-1), InterfaceStyle.current.button_normal)
 	PixelArt.draw_colored(c, icon, colors, plate.position + Vector2(2, 2), 1)
 
 

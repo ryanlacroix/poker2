@@ -2,15 +2,27 @@ class_name Ornament
 extends RefCounted
 ## Gilded pixel-art trim shared by the UI: framed nine-patch boxes, gold rules with diamond
 ## caps, corner brackets and a damask wallpaper. Everything is generated in code at 1px per
-## texel, so it stays crisp at any integer scale.
-
-const GOLD_LIGHT := Color("f8dc78")
-const GOLD_DARK := Color("a0701c")
-## Muted brass for quieter trim (seat frames, the action panel).
-const BRASS := Color("b0904a")
-const BRASS_DARK := Color("6a5228")
+## texel, so it stays crisp at any integer scale. Colours come from [member InterfaceStyle.current].
 ## Margin of the generated frame's corners: outline, gold line, inner outline, then the bracket.
 const FRAME_MARGIN := 5
+
+# Wallpaper motifs (see [enum InterfaceStyle.Motif]): X is the motif, o its shadow.
+const FLEURON: Array[String] = [
+	"..X..",
+	"..X..",
+	"XXoXX",
+	"..X..",
+	"..X..",
+]
+const FLEUR_DE_LIS: Array[String] = [
+	"..X..",
+	".XXX.",
+	"X.X.X",
+	"X.X.X",
+	"XXXXX",
+	"..X..",
+	".X.X.",
+]
 
 
 ## A framed box: ink outline with cut corners, a bevelled gold line (light top/left, dark
@@ -66,15 +78,17 @@ static func draw_diamond(c: CanvasItem, center: Vector2, radius: int, color: Col
 		c.draw_rect(Rect2(center.x - w, center.y + i, w * 2 + 1, 1), color)
 
 
-## A gem: a gold diamond outlined in ink, with a light glint.
-static func draw_gem(c: CanvasItem, center: Vector2, radius: int, color := PixelArt.GOLD) -> void:
+## A gem: a diamond outlined in ink, with a light glint; the style's gem colour unless
+## [param color] is given.
+static func draw_gem(c: CanvasItem, center: Vector2, radius: int, color := Color.TRANSPARENT) -> void:
+	var style := InterfaceStyle.current
 	draw_diamond(c, center, radius + 1, PixelArt.INK)
-	draw_diamond(c, center, radius, color)
+	draw_diamond(c, center, radius, style.gem if color == Color.TRANSPARENT else color)
 	if radius >= 2:
-		c.draw_rect(Rect2(center + Vector2(-1, -radius + 1), Vector2.ONE), GOLD_LIGHT)
+		c.draw_rect(Rect2(center + Vector2(-1, -radius + 1), Vector2.ONE), style.gem_light)
 
 
-## A gold rule from [param from_x] to [param to_x] at row [param y] with a dark underline and a
+## A gilt rule from [param from_x] to [param to_x] at row [param y] with a dark underline and a
 ## gem at each end (and one in the middle if [param middle_gem]).
 static func draw_rule(c: CanvasItem, from_x: float, to_x: float, y: float, middle_gem := false) -> void:
 	from_x = floorf(from_x)
@@ -82,9 +96,10 @@ static func draw_rule(c: CanvasItem, from_x: float, to_x: float, y: float, middl
 	y = floorf(y)
 	if to_x - from_x < 8:
 		return
+	var style := InterfaceStyle.current
 	c.draw_rect(Rect2(from_x, y - 1, to_x - from_x, 1), PixelArt.INK)
-	c.draw_rect(Rect2(from_x, y, to_x - from_x, 1), PixelArt.GOLD)
-	c.draw_rect(Rect2(from_x, y + 1, to_x - from_x, 1), GOLD_DARK)
+	c.draw_rect(Rect2(from_x, y, to_x - from_x, 1), style.trim)
+	c.draw_rect(Rect2(from_x, y + 1, to_x - from_x, 1), style.trim_dark)
 	c.draw_rect(Rect2(from_x, y + 2, to_x - from_x, 1), PixelArt.INK)
 	draw_gem(c, Vector2(from_x + 2, y), 2)
 	draw_gem(c, Vector2(to_x - 3, y), 2)
@@ -104,9 +119,9 @@ static func draw_corner_brackets(c: CanvasItem, rect: Rect2, color: Color, lengt
 			c.draw_rect(Rect2(corner + Vector2(0, i * sy), Vector2.ONE), color)
 
 
-## Damask wallpaper: [param base] with faint grain, a diamond trellis and a small fleuron in each
+## Damask wallpaper: [param base] with faint grain, a diamond trellis and [param motif] in each
 ## cell, as a texture of [param size].
-static func wallpaper(base: Color, size: Vector2i) -> Texture2D:
+static func wallpaper(base: Color, motif_kind: InterfaceStyle.Motif, size: Vector2i) -> Texture2D:
 	const TILE := 24
 	const H := 12 # half a tile
 	var line := base.lightened(0.07)
@@ -129,13 +144,18 @@ static func wallpaper(base: Color, size: Vector2i) -> Texture2D:
 		tile.set_pixel(i, (H - i + TILE) % TILE, line)
 		tile.set_pixel(i, (i + H + 1) % TILE, shade)
 		tile.set_pixel(i, (H - i + 1 + TILE) % TILE, shade)
-	# A fleuron (a little four-petal flower) in the middle of each trellis cell.
+	# A motif in the middle of each trellis cell.
+	var pattern: Array = FLEUR_DE_LIS if motif_kind == InterfaceStyle.Motif.FLEUR_DE_LIS else FLEURON
+	@warning_ignore("integer_division")
+	var half := Vector2i(pattern[0].length() / 2, pattern.size() / 2)
 	for centre: Vector2i in [Vector2i(H, H), Vector2i(0, 0)]:
-		for d: Vector2i in [Vector2i(0, -2), Vector2i(0, 2), Vector2i(-2, 0), Vector2i(2, 0),
-				Vector2i(0, -1), Vector2i(0, 1), Vector2i(-1, 0), Vector2i(1, 0)]:
-			var q := (centre + d + Vector2i(TILE, TILE)) % TILE
-			tile.set_pixel(q.x, q.y, motif)
-		tile.set_pixel(centre.x, centre.y, shade)
+		for y in pattern.size():
+			for x in pattern[y].length():
+				var cell: String = pattern[y][x]
+				if cell == ".":
+					continue
+				var q := (centre + Vector2i(x, y) - half + Vector2i(TILE, TILE)) % TILE
+				tile.set_pixel(q.x, q.y, motif if cell == "X" else shade)
 	var image := Image.create(size.x, size.y, false, Image.FORMAT_RGBA8)
 	for y in range(0, size.y, TILE):
 		for x in range(0, size.x, TILE):
@@ -143,8 +163,11 @@ static func wallpaper(base: Color, size: Vector2i) -> Texture2D:
 	return ImageTexture.create_from_image(image)
 
 
-## A slider grabber: a faceted gold gem, [param radius] cells out from its centre.
-static func gem_texture(radius: int, color := PixelArt.GOLD) -> Texture2D:
+## A slider grabber: a faceted gem in the style's colours, [param radius] cells out from its centre;
+## [param lit] brightens its middle (for hover).
+static func gem_texture(radius: int, lit := false) -> Texture2D:
+	var style := InterfaceStyle.current
+	var color := style.gem_light if lit else style.gem
 	var size := radius * 2 + 3
 	var image := Image.create(size, size, false, Image.FORMAT_RGBA8)
 	image.fill(Color(0, 0, 0, 0))
@@ -156,7 +179,7 @@ static func gem_texture(radius: int, color := PixelArt.GOLD) -> Texture2D:
 				continue
 			var color_here: Color = PixelArt.INK
 			if d <= radius:
-				color_here = GOLD_LIGHT if (y < c and x <= c) else (color if y <= c or x < c else GOLD_DARK)
+				color_here = style.gem_light if (y < c and x <= c) else (color if y <= c or x < c else style.gem_dark)
 				if d == 0:
 					color_here = color
 			image.set_pixel(x, y, color_here)

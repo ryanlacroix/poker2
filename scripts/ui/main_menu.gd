@@ -27,6 +27,8 @@ var _time := 0.0
 
 func _ready() -> void:
 	resized.connect(queue_redraw)
+	# The title screen always wears the baseline (table 1) style.
+	InterfaceStyle.current = InterfaceStyle.for_table(1)
 	add_child(_vignette())
 	add_child(_gilt_border())
 
@@ -117,7 +119,8 @@ static func _gilt_border() -> Control:
 	var border := Control.new()
 	border.set_anchors_preset(PRESET_FULL_RECT)
 	border.mouse_filter = MOUSE_FILTER_IGNORE
-	var box := Ornament.frame_box(Color(0, 0, 0, 0), PixelArt.GOLD, Ornament.GOLD_DARK)
+	var style := InterfaceStyle.current
+	var box := Ornament.frame_box(Color(0, 0, 0, 0), style.trim, style.trim_dark)
 	border.draw.connect(func() -> void:
 		var rect := Rect2(Vector2.ZERO, border.size).grow(-BORDER_INSET)
 		box.draw(border.get_canvas_item(), rect)
