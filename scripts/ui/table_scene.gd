@@ -86,6 +86,8 @@ var _raise_button: Button
 var _raise_slider: HSlider
 var _raise_label: Label
 var _next_hand_button: Button
+## Fades NEXT HAND out once it's pressed (see [method _fade_out_next_hand]).
+var _next_hand_tween: Tween
 var _use_item_button: Button
 var _drop_item_button: Button
 var _human_item_turn := false # the item phase is waiting on the human's choice
@@ -334,7 +336,7 @@ func _build_ui() -> void:
 	_next_hand_button = _new_button("NEXT HAND", false)
 	UiTheme.add_at(self, _next_hand_button, pot_center - PortraitLayout.NEXT_HAND_SIZE / 2, PortraitLayout.NEXT_HAND_SIZE)
 	_next_hand_button.pressed.connect(func() -> void:
-		_next_hand_button.visible = false
+		_fade_out_next_hand()
 		if _human_item_turn:
 			_continue_after_items = true
 			_submit_item_decision(ItemDecision.new(Item.Action.KEEP))
@@ -692,8 +694,7 @@ func _connect_table() -> void:
 			_continue_after_items = false
 			_clear_table_then_continue()
 			return
-		_next_hand_button.visible = true
-		_next_hand_button.grab_focus()) # Enter / Space also continue
+		_show_next_hand()) # Enter / Space also continue
 	_table.game_over.connect(_show_game_over)
 
 
@@ -716,19 +717,42 @@ func _show_item_buttons(can_use: bool) -> void:
 	if not human.has_item():
 		return
 	var item_name := Item.display_name(human.item as Item.Kind)
-	_next_hand_button.visible = true
+	_show_next_hand()
 	_drop_item_button.text = "DROP %s" % item_name
 	_drop_item_button.visible = true
 	if can_use:
 		_use_item_button.text = "USE %s" % item_name
 		_use_item_button.visible = true
-	_next_hand_button.grab_focus() # Enter / Space keep it and move on
+	# NEXT HAND has focus, so Enter / Space keep it and move on.
 
 
 func _hide_item_buttons() -> void:
 	_use_item_button.visible = false
 	_drop_item_button.visible = false
-	_next_hand_button.visible = false
+	# Once pressed, NEXT HAND is left to finish fading out.
+	if not (_next_hand_tween and _next_hand_tween.is_running()):
+		_next_hand_button.visible = false
+
+
+## Shows NEXT HAND at full opacity, focused so Enter / Space press it.
+func _show_next_hand() -> void:
+	if _next_hand_tween:
+		_next_hand_tween.kill()
+	_next_hand_button.modulate.a = 1
+	_next_hand_button.mouse_filter = MOUSE_FILTER_STOP
+	_next_hand_button.visible = true
+	_next_hand_button.grab_focus()
+
+
+## Fades NEXT HAND out like the action panel, taking no more presses meanwhile.
+func _fade_out_next_hand() -> void:
+	if _next_hand_tween:
+		_next_hand_tween.kill()
+	_next_hand_button.mouse_filter = MOUSE_FILTER_IGNORE
+	_next_hand_button.release_focus()
+	_next_hand_tween = create_tween()
+	_next_hand_tween.tween_property(_next_hand_button, "modulate:a", 0.0, ACTION_BAR_FADE_SECONDS)
+	_next_hand_tween.tween_callback(_next_hand_button.hide)
 
 
 ## Ends the human's item turn with [param decision].
@@ -915,6 +939,9 @@ func _on_leech_drained(caster: PokerPlayer, victim: PokerPlayer, amount: int) ->
 
 ## End of the hand: every card on the table fades out, then the next hand is dealt.
 func _clear_table_then_continue() -> void:
+	# NEXT HAND finishes fading out before the cards start to.
+	if _next_hand_tween and _next_hand_tween.is_running():
+		await _next_hand_tween.finished
 	for seat in _seats:
 		seat.fade_out_cards()
 	for view in _community:

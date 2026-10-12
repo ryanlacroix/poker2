@@ -12,7 +12,7 @@ extends RefCounted
 ## (0 = plain, 1 = full).
 const TABLES := [
 	{
-		name = "AMATEUR HOUR",
+		name = "SALOON",
 		opponents = [
 			"res://data/npcs/rocky_new.tres",    # tight-passive
 			"res://data/npcs/mary_beth.tres",    # calling station

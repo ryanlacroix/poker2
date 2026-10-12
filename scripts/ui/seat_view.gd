@@ -16,6 +16,8 @@ const COMPACT_SIZE := Vector2(106, 52 + UiTheme.LINE_HEIGHT * 3)
 const PORTRAIT_SIZE := Vector2(48, 48)
 const WIDE_CARD_SCALE := 2
 const STATUS_COLOR := Color("9fe0a0")
+## The dealer button: a square "D" in the inner bottom corner of the dealer's seat.
+const DEALER_SIZE := 9
 const HIT_SECONDS := 0.6
 ## How long the gold your-turn outline takes to fade in or out.
 const ACTIVE_FADE_SECONDS := 0.1
@@ -328,21 +330,20 @@ func _process(_delta: float) -> void:
 func _draw() -> void:
 	# Dark backing so labels stay readable over any part of the map.
 	var backing := Rect2(Vector2(-1, -1), seat_size() + Vector2(2, 2))
-	var style := InterfaceStyle.current
-	draw_rect(backing, style.seat_backing)
+	var look := InterfaceStyle.current
+	draw_rect(backing, look.seat_backing)
 	# Brass trim with gilt corner brackets.
-	draw_rect(backing, Color(style.brass, 0.35), false, 1)
-	Ornament.draw_corner_brackets(self, backing, Color(style.trim, 0.8), 4)
+	draw_rect(backing, Color(look.brass, 0.35), false, 1)
+	Ornament.draw_corner_brackets(self, backing, Color(look.trim, 0.8), 4)
 	_portrait_layer.queue_redraw()
 	_draw_hearts()
 	if _is_dealer:
-		var origin: Vector2
-		match style:
-			Style.COMPACT_LEFT: origin = Vector2(seat_size().x - 10, 53)
-			Style.COMPACT_RIGHT: origin = Vector2(1, 53)
-			_: origin = Vector2(1, _portrait_frame().end.y + 3) # under the portrait
-		draw_rect(Rect2(origin, Vector2(9, 9)), PixelArt.PAPER)
-		draw_rect(Rect2(origin, Vector2(9, 9)), PixelArt.INK, false, 1)
+		# In the seat's bottom corner on the side facing the table (the left, for the human),
+		# a pixel clear of the gilt corner bracket.
+		var inner_right := style == Style.COMPACT_LEFT
+		var origin := Vector2(seat_size().x - 1 - DEALER_SIZE if inner_right else 1.0, seat_size().y - 1 - DEALER_SIZE)
+		draw_rect(Rect2(origin, Vector2(DEALER_SIZE, DEALER_SIZE)), PixelArt.PAPER)
+		draw_rect(Rect2(origin, Vector2(DEALER_SIZE, DEALER_SIZE)), PixelArt.INK, false, 1)
 		PixelArt.draw(self, PixelArt.GLYPHS["D"], origin + Vector2(3, 2), 1, PixelArt.INK)
 
 
@@ -364,6 +365,8 @@ func _draw_hearts() -> void:
 	var row_width := max_hearts * heart_w + (max_hearts - 1) * SPACING
 	var line_y := (52.0 if _is_compact() else _wide_labels_y()) + UiTheme.LINE_HEIGHT
 	var x := seat_size().x - 2 - row_width if style == Style.COMPACT_RIGHT else 2.0
+	if style == Style.WIDE:
+		x += DEALER_SIZE + 2 # clear of the dealer button in the corner below-left
 	var y := line_y + floorf((UiTheme.LINE_HEIGHT - heart_h) / 2)
 	var tint := KNOCKED_OUT_TINT if _knocked_out() else Color.WHITE
 
