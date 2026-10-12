@@ -19,6 +19,8 @@ const STATUS_COLOR := Color("9fe0a0")
 const HIT_SECONDS := 0.6
 ## How long the gold your-turn outline takes to fade in or out.
 const ACTIVE_FADE_SECONDS := 0.1
+## Tint for the text and hearts of a seat whose player is OUT or RIP.
+const KNOCKED_OUT_TINT := Color(0.55, 0.55, 0.6)
 
 ## Z index of the shot's screen-darkening overlay. Portraits (and the gun) draw above it;
 ## everything else stays below.
@@ -182,6 +184,9 @@ func deal_cards(delays: Array[float], from: Vector2) -> void:
 func refresh() -> void:
 	# RIP once shot out of hearts (straight away, not just from the next hand); OUT if they went broke.
 	_chips_label.text = "RIP" if player.hearts == 0 else "OUT" if player.is_out else "$%d" % player.chips
+	var text_tint := KNOCKED_OUT_TINT if _knocked_out() else Color.WHITE
+	for label: Label in [_name_label, _chips_label, _status_label]:
+		label.modulate = text_tint
 	var face_up := player.is_human() or _reveal
 	for i in 2:
 		var hole_card: Card = player.hole_cards[i] if i < player.hole_cards.size() else null
@@ -189,6 +194,11 @@ func refresh() -> void:
 		_cards[i].modulate = Color(1, 1, 1, 0.35) if player.folded else Color.WHITE
 	_update_processing()
 	queue_redraw()
+
+
+## Shot out of hearts or gone broke: the seat shows RIP or OUT.
+func _knocked_out() -> bool:
+	return player.hearts == 0 or player.is_out
 
 
 func set_status(text: String, color := STATUS_COLOR) -> void:
@@ -350,16 +360,17 @@ func _draw_hearts() -> void:
 	var line_y := (52.0 if _is_compact() else _wide_labels_y()) + UiTheme.LINE_HEIGHT
 	var x := seat_size().x - 2 - row_width if style == Style.COMPACT_RIGHT else 2.0
 	var y := line_y + floorf((UiTheme.LINE_HEIGHT - heart_h) / 2)
+	var tint := KNOCKED_OUT_TINT if _knocked_out() else Color.WHITE
 
 	for i in max_hearts:
 		# Right-column seats fill from the right, so the hearts read toward the name's end.
 		var full := i >= max_hearts - player.hearts if style == Style.COMPACT_RIGHT else i < player.hearts
 		var origin := Vector2(x + i * (heart_w + SPACING), y)
 		for d: Vector2 in [Vector2.LEFT, Vector2.RIGHT, Vector2.UP, Vector2.DOWN]:
-			PixelArt.draw(self, PixelArt.HEART, origin + d, PX, PixelArt.INK) # 1px outline
-		PixelArt.draw(self, PixelArt.HEART, origin, PX, PixelArt.HEART_RED if full else PixelArt.HEART_EMPTY)
+			PixelArt.draw(self, PixelArt.HEART, origin + d, PX, PixelArt.INK * tint) # 1px outline
+		PixelArt.draw(self, PixelArt.HEART, origin, PX, (PixelArt.HEART_RED if full else PixelArt.HEART_EMPTY) * tint)
 		if full:
-			draw_rect(Rect2(origin + Vector2(PX, PX), Vector2(PX, PX)), Color(1, 1, 1, 0.7)) # shine
+			draw_rect(Rect2(origin + Vector2(PX, PX), Vector2(PX, PX)), Color(tint, 0.7)) # shine
 
 
 ## The portrait with its frame, glow and hit flash. Drawn onto [member _portrait_layer],
