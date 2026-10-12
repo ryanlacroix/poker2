@@ -1,0 +1,15 @@
+[gd_resource type="Resource" script_class="NpcBrain" format=3]
+
+[ext_resource type="Script" path="res://scripts/ai/npc_brain.gd" id="1"]
+[ext_resource type="Texture2D" path="res://assets/new_portraits/mary-beth-new.png" id="2"]
+
+[resource]
+script = ExtResource("1")
+display_name = "MARY-BETH"
+tightness = 0.15
+aggression = 0.15
+bluff_rate = 0.05
+simulations = 200
+randomness = 0.15
+portrait = ExtResource("2")
+injured_portrait = ExtResource("2")

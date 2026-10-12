@@ -14,12 +14,12 @@ const TABLES := [
 	{
 		name = "AMATEUR HOUR",
 		opponents = [
-			"res://data/npcs/rocky.tres",    # tight-passive
-			"res://data/npcs/lucky.tres",    # calling station
-			"res://data/npcs/maverick.tres", # loose-aggressive
-			"res://data/npcs/balrus.tres",   # tight-aggressive, strongest reader
-			"res://data/npcs/doc.tres",      # balanced
-			"res://data/npcs/duke.tres",     # maniac
+			"res://data/npcs/rocky_new.tres",    # tight-passive
+			"res://data/npcs/mary_beth.tres",    # calling station
+			"res://data/npcs/maverick_new.tres", # loose-aggressive
+			"res://data/npcs/tophat.tres",       # tight-aggressive, strongest reader
+			"res://data/npcs/monk.tres",         # balanced
+			"res://data/npcs/wild_willy.tres",   # maniac
 		],
 		starting_chips = 1000, small_blind = 10, big_blind = 20,
 		felt = Color("1f6b3a"), felt_inner = Color("247a43"), grain = 0.5,
