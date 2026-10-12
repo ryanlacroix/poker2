@@ -46,16 +46,21 @@ const TABLE_LABEL_FONT_SIZE := 18
 const TABLE_NAME_SHADOW_OFFSET := 2
 ## How much thicker the table's name is drawn (the UI font has no bold of its own).
 const TABLE_NAME_EMBOLDEN := 0.8
-## Dark blue felt behind the table, filling the screen.
+## Dark blue damask wallpaper behind the table, filling the screen.
 const BACKDROP := Color("16203a")
 ## Share of the felt's pixels drawn a shade darker / lighter on a textured felt.
 const FELT_DARK_SHARE := 0.12
 const FELT_LIGHT_SHARE := 0.08
+## The table's rail, outside in: dark edge, lit top of the wood, the wood, its shadow, gold inlay.
+const RAIL_COLORS: Array[Color] = [Color("2a1608"), Color("9a6a3a"), Color("6e4626"), Color("4a2c16"), Color("c8a050")]
+## Gap between the brass studs along the rail.
+const RAIL_STUD_SPACING := 20.0
 
 var _level: TableLevel = GameConfig.table_level()
 var _table: PokerTable
 var _layout: PortraitLayout
 var _backdrop_texture: Texture2D
+var _table_name_label: Label # the gilded rule in the header runs on from its end
 # Grained felt, covering the whole table rect (null on a plain felt).
 var _felt_texture: Texture2D
 var _felt_inner_texture: Texture2D
@@ -139,11 +144,46 @@ func _ready() -> void:
 
 func _draw() -> void:
 	draw_texture(_backdrop_texture, Vector2.ZERO)
-	# A long table between the two NPC columns: wooden rail, felt, lighter inner felt.
+	_draw_header_rule()
+	# A long table between the two NPC columns: a bevelled wooden rail with a gold inlay and
+	# brass studs, felt, then a lighter inner felt edged with a gold pinstripe.
 	var table := _layout.table
-	draw_colored_polygon(_chamfered(table, 6), Color("5a3a22"))
-	_draw_felt(_chamfered(table.grow(-3), 5), _level.felt, _felt_texture)
-	_draw_felt(_chamfered(table.grow(-9), 4), _level.felt_inner, _felt_inner_texture)
+	for i in RAIL_COLORS.size():
+		draw_colored_polygon(_chamfered(table.grow(-i), 6 - i * 0.5), RAIL_COLORS[i])
+	_draw_rail_studs(table)
+	_draw_felt(_chamfered(table.grow(-RAIL_COLORS.size()), 4), _level.felt, _felt_texture)
+	var inner := table.grow(-9)
+	draw_colored_polygon(_chamfered(inner.grow(1), 4), Color(PixelArt.GOLD, 0.35))
+	_draw_felt(_chamfered(inner, 4), _level.felt_inner, _felt_inner_texture)
+	draw_colored_polygon(_chamfered(inner.grow(-3), 3), Color(PixelArt.GOLD, 0.12))
+	_draw_felt(_chamfered(inner.grow(-4), 3), _level.felt_inner, _felt_inner_texture)
+
+
+## Brass studs along the rail's long straight top and bottom runs, each with a glint.
+func _draw_rail_studs(table: Rect2) -> void:
+	var y_top := table.position.y + 2
+	var y_bottom := table.end.y - 3
+	var x := table.position.x + RAIL_STUD_SPACING
+	while x < table.end.x - RAIL_STUD_SPACING / 2.0:
+		for y in [y_top, y_bottom]:
+			draw_rect(Rect2(x - 1, y - 1, 3, 3), Color("3a2210"))
+			draw_rect(Rect2(x, y, 1, 1), Ornament.GOLD_LIGHT)
+			draw_rect(Rect2(x - 1, y, 1, 1), PixelArt.GOLD)
+			draw_rect(Rect2(x, y - 1, 1, 1), PixelArt.GOLD)
+			draw_rect(Rect2(x + 1, y, 1, 1), Ornament.GOLD_DARK)
+			draw_rect(Rect2(x, y + 1, 1, 1), Ornament.GOLD_DARK)
+		x += RAIL_STUD_SPACING
+
+
+## A gilded rule running from just after the table's name to the right edge of the header.
+func _draw_header_rule() -> void:
+	if _table_name_label == null:
+		return
+	var font := _table_name_label.get_theme_font("font")
+	var text_end := _table_name_label.position.x + font.get_string_size(
+		_table_name_label.text, HORIZONTAL_ALIGNMENT_LEFT, -1, TABLE_LABEL_FONT_SIZE).x
+	var from := _layout.header.position.x + text_end + TABLE_NAME_SHADOW_OFFSET + 6
+	Ornament.draw_rule(self, from, _layout.header.end.x, _layout.header.get_center().y + 1)
 
 
 func _draw_felt(points: PackedVector2Array, color: Color, texture: Texture2D) -> void:
@@ -199,7 +239,7 @@ func _build_ui() -> void:
 	var viewport_size := get_viewport_rect().size
 	_layout = PortraitLayout.new(viewport_size, _table.players.size() - 1, insets.x, insets.y)
 	var pot_center := _layout.pot_center
-	_backdrop_texture = _grained_felt(BACKDROP, Vector2i(viewport_size.ceil()))
+	_backdrop_texture = Ornament.wallpaper(BACKDROP, Vector2i(viewport_size.ceil()))
 	if _level.grain > 0:
 		var felt_size := Vector2i(_layout.table.size.ceil())
 		_felt_texture = _grained_felt(_level.felt, felt_size, _level.grain)
@@ -224,6 +264,8 @@ func _build_ui() -> void:
 	table_name.add_theme_constant_override("shadow_offset_x", TABLE_NAME_SHADOW_OFFSET)
 	table_name.add_theme_constant_override("shadow_offset_y", TABLE_NAME_SHADOW_OFFSET)
 	table_name.add_theme_constant_override("shadow_outline_size", 0)
+	_table_name_label = table_name
+	header_row.sort_children.connect(queue_redraw)
 
 	# players[0] is the human (bottom right); opponents fill the edge columns clockwise.
 	var human_portrait: Texture2D = load(GameConfig.player_portrait_path)

@@ -1,6 +1,6 @@
 extends Control
-## Title screen: the splash art filling the screen and slowly drifting, with the title
-## sitting just above JOIN TABLE near the bottom.
+## Title screen: the splash art filling the screen and slowly drifting inside a gilt border, with
+## the title and a gilded rule sitting just above JOIN TABLE near the bottom.
 
 const SPLASH_PATH := "res://assets/sprites/poker-splash.png"
 ## Furthest the splash drifts from centre, in pixels, and how long one full sway takes.
@@ -8,8 +8,12 @@ const DRIFT := Vector2(8, 5)
 const DRIFT_PERIOD := 16.0
 ## Gap below the button.
 const EDGE_MARGIN := 80.0
-## Gap between the title and the button.
-const TITLE_GAP := 32.0
+## Gap between the title, the gilded rule under it and the button.
+const TITLE_GAP := 12.0
+const RULE_WIDTH := 220.0
+const RULE_HEIGHT := 9.0
+## How far the gilt border round the screen sits in from its edges.
+const BORDER_INSET := 6.0
 ## Where the vignette starts darkening, as a share of the centre-to-corner distance.
 const VIGNETTE_START := 0.45
 ## On load the splash fades in from black, then the title and button fade in together.
@@ -24,6 +28,7 @@ var _time := 0.0
 func _ready() -> void:
 	resized.connect(queue_redraw)
 	add_child(_vignette())
+	add_child(_gilt_border())
 
 	var box := VBoxContainer.new()
 	box.set_anchors_preset(PRESET_FULL_RECT)
@@ -43,6 +48,14 @@ func _ready() -> void:
 	title.add_theme_constant_override("shadow_offset_x", 3)
 	title.add_theme_constant_override("shadow_offset_y", 3)
 	box.add_child(title)
+
+	# A gilded rule under the title, about as wide as it.
+	var rule := Control.new()
+	rule.custom_minimum_size = Vector2(RULE_WIDTH, RULE_HEIGHT)
+	rule.size_flags_horizontal = SIZE_SHRINK_CENTER
+	rule.draw.connect(func() -> void:
+		Ornament.draw_rule(rule, 0, rule.size.x, floorf(rule.size.y / 2), true))
+	box.add_child(rule)
 
 	var play := _button("JOIN TABLE")
 	play.size_flags_horizontal = SIZE_SHRINK_CENTER
@@ -97,6 +110,23 @@ static func _vignette() -> TextureRect:
 	rect.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
 	rect.mouse_filter = MOUSE_FILTER_IGNORE
 	return rect
+
+
+## A gilt frame inset round the screen, with a gem at the middle of each side.
+static func _gilt_border() -> Control:
+	var border := Control.new()
+	border.set_anchors_preset(PRESET_FULL_RECT)
+	border.mouse_filter = MOUSE_FILTER_IGNORE
+	var box := Ornament.frame_box(Color(0, 0, 0, 0), PixelArt.GOLD, Ornament.GOLD_DARK)
+	border.draw.connect(func() -> void:
+		var rect := Rect2(Vector2.ZERO, border.size).grow(-BORDER_INSET)
+		box.draw(border.get_canvas_item(), rect)
+		var mid := (rect.get_center() - Vector2.ONE * 0.5).floor()
+		for gem: Vector2 in [Vector2(mid.x, rect.position.y + 1), Vector2(mid.x, rect.end.y - 2),
+				Vector2(rect.position.x + 1, mid.y), Vector2(rect.end.x - 2, mid.y)]:
+			Ornament.draw_gem(border, gem, 3))
+	border.resized.connect(border.queue_redraw)
+	return border
 
 
 static func _button(text: String) -> Button:

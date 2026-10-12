@@ -327,7 +327,11 @@ func _process(_delta: float) -> void:
 
 func _draw() -> void:
 	# Dark backing so labels stay readable over any part of the map.
-	draw_rect(Rect2(Vector2(-1, -1), seat_size() + Vector2(2, 2)), Color(0.05, 0.06, 0.11, 0.78))
+	var backing := Rect2(Vector2(-1, -1), seat_size() + Vector2(2, 2))
+	draw_rect(backing, Color(0.05, 0.06, 0.11, 0.78))
+	# Brass trim with gold corner brackets.
+	draw_rect(backing, Color(Ornament.BRASS, 0.35), false, 1)
+	Ornament.draw_corner_brackets(self, backing, Color(PixelArt.GOLD, 0.8), 4)
 	_portrait_layer.queue_redraw()
 	_draw_hearts()
 	if _is_dealer:
@@ -392,7 +396,7 @@ func _draw_portrait(c: CanvasItem) -> void:
 	elif _shimmering():
 		_draw_shimmer_glow(c, frame, face, dimmed)
 	else:
-		c.draw_rect(frame.grow(1), PixelArt.INK if dimmed else PixelArt.PAPER, false, 1)
+		_draw_portrait_frame(c, frame, dimmed)
 		c.draw_texture_rect(face, frame, false, Color(0.45, 0.45, 0.5) if dimmed else Color.WHITE)
 	# Out of the game: an X if shot down to no hearts, a dollar sign if they went broke.
 	if player.hearts == 0:
@@ -412,6 +416,21 @@ func _draw_portrait(c: CanvasItem) -> void:
 		var k := 1.0 - (Time.get_ticks_msec() / 1000.0 - _hit_at) / HIT_SECONDS
 		var blink := int(Time.get_ticks_msec() / 80.0) % 2 == 0
 		c.draw_rect(frame, Color(Color.WHITE if blink else _flash_color, 0.65 * k))
+
+
+## A gilt frame round the portrait: lit along the top and left, shadowed along the bottom and
+## right, with gold studs at the corners. Dull pewter while [param dimmed].
+static func _draw_portrait_frame(c: CanvasItem, frame: Rect2, dimmed: bool) -> void:
+	var light := Color("8a8a96") if dimmed else Ornament.GOLD_LIGHT
+	var dark := Color("4a4a56") if dimmed else Ornament.GOLD_DARK
+	var outer := frame.grow(1)
+	c.draw_rect(outer, dark, false, 1)
+	c.draw_rect(Rect2(outer.position, Vector2(outer.size.x - 1, 1)), light)
+	c.draw_rect(Rect2(outer.position, Vector2(1, outer.size.y - 1)), light)
+	for corner: Vector2 in [outer.position, Vector2(outer.end.x - 1, outer.position.y),
+			Vector2(outer.position.x, outer.end.y - 1), outer.end - Vector2.ONE]:
+		Ornament.draw_diamond(c, corner, 1, PixelArt.INK if not dimmed else dark)
+		c.draw_rect(Rect2(corner, Vector2.ONE), light)
 
 
 ## The carried item, as a small icon on a dark plate in the portrait's bottom corner
@@ -442,6 +461,7 @@ func _draw_item(c: CanvasItem, frame: Rect2) -> void:
 	var plate := Rect2(
 		Vector2(frame.position.x if style == Style.COMPACT_RIGHT else frame.end.x - plate_size.x,
 			frame.end.y - plate_size.y), plate_size)
+	c.draw_rect(plate.grow(1), Ornament.GOLD_DARK)
 	c.draw_rect(plate, PixelArt.INK)
 	c.draw_rect(plate.grow(-1), Color("2d3a5a"))
 	PixelArt.draw_colored(c, icon, colors, plate.position + Vector2(2, 2), 1)

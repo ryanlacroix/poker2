@@ -12,7 +12,7 @@ const FADE_TIME := 0.4
 const MAX_TITLE_SCALE := 3
 const OUTLINE_SIZE := 4 # in unscaled font pixels: 2 on each side
 const SIDE_MARGIN := 8
-const LINE_GAP := 4
+const LINE_GAP := 10 # room for the gilded rule between the lines
 
 ## Lowest y the text may reach; the banner rises above it (e.g. to clear the board).
 var max_bottom := INF
@@ -66,6 +66,10 @@ func _draw() -> void:
 	_draw_line(font, font_size, _title, title_scale, top)
 	_draw_line(font, font_size, _subtitle, subtitle_scale, top + line_height * title_scale + LINE_GAP)
 	draw_set_transform(Vector2.ZERO)
+	# A gilded rule between the hand and the winner's name, as wide as the title.
+	var rule_half := minf(title_width * title_scale / 2 + 8, size.x / 2 - SIDE_MARGIN)
+	Ornament.draw_rule(self, size.x / 2 - rule_half, size.x / 2 + rule_half,
+		top + line_height * title_scale + floorf(LINE_GAP / 2.0) - 1, true)
 
 
 ## White text with a black outline, centred horizontally, its top at [param top].

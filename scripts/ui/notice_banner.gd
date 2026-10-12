@@ -1,6 +1,6 @@
 class_name NoticeBanner
 extends Control
-## Caption-style notices: a translucent black strip across the full width of the screen with
+## Caption-style notices: a translucent black, gilt-edged strip across the full width of the screen with
 ## white text on it. Queued messages play one at a time, each shown for [constant HOLD_TIME]
 ## and then faded out. The node's rect is the strip.
 
@@ -53,6 +53,10 @@ func _show_next() -> void:
 
 func _draw() -> void:
 	draw_rect(Rect2(Vector2.ZERO, size), Color(0, 0, 0, 0.6))
+	# Gilt edging along the top and bottom of the strip.
+	for y: float in [0.0, size.y - 2]:
+		draw_rect(Rect2(0, y, size.x, 1), PixelArt.GOLD if y == 0 else Ornament.GOLD_DARK)
+		draw_rect(Rect2(0, y + 1, size.x, 1), Color(PixelArt.INK, 0.8))
 	var font := get_theme_default_font()
 	var font_size := UiTheme.FONT_SIZE
 	var baseline := floorf((size.y + font.get_ascent(font_size) - font.get_descent(font_size)) / 2)
