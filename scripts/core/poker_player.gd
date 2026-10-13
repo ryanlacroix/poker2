@@ -22,6 +22,10 @@ var shimmered_by: PokerPlayer
 var leeched_by: PokerPlayer
 ## How many more times the leech on this player will drain them.
 var leech_drains_left := 0
+## Whoever strapped a bomb to this player, or null if none is on them (see [constant Hex.Effect.BOOM_TRAP]).
+var trapped_by: PokerPlayer
+## Blown out of the game by a boom trap: their seat is gone from the table.
+var blown_up := false
 
 var hole_cards: Array[Card] = []
 ## Chips put in during the current betting round.
@@ -58,6 +62,10 @@ func is_shimmering() -> bool:
 
 func is_leeched() -> bool:
 	return leeched_by != null
+
+
+func is_trapped() -> bool:
+	return trapped_by != null
 
 
 func has_item() -> bool:

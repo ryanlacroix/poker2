@@ -19,6 +19,8 @@ const STATUS_COLOR := Color("9fe0a0")
 ## The dealer button: a square "D" in the inner bottom corner of the dealer's seat.
 const DEALER_SIZE := 9
 const HIT_SECONDS := 0.6
+## How long a bomb that falls off takes to drop away and vanish.
+const BOMB_DROP_SECONDS := 0.6
 ## How long the gold your-turn outline takes to fade in or out.
 const ACTIVE_FADE_SECONDS := 0.1
 ## Tint for the text and hearts of a seat whose player is OUT or RIP.
@@ -70,6 +72,8 @@ var _flash_color := PixelArt.HEART_RED
 var _hex_glow_at := -1.0
 var _hex_glow_seconds := 0.0
 var _hex_glow_one_sided := false # the caster's glow: only on the side facing the table
+# When the bomb fell off (-1 = it hasn't).
+var _bomb_dropped_at := -1.0
 ## Leaves the carried item off the portrait, while a magpie is still bringing it over.
 var item_hidden := false:
 	set(value):
@@ -285,12 +289,27 @@ func _hex_glow_progress() -> float:
 	return k if k < 1.0 else -1.0
 
 
+## The bomb on this player fell off: it drops away and vanishes over [constant BOMB_DROP_SECONDS].
+func drop_bomb() -> void:
+	_bomb_dropped_at = Time.get_ticks_msec() / 1000.0
+	_update_processing()
+
+
+## Seconds since the bomb fell off, or -1 once it's gone (or if it hasn't fallen).
+func _bomb_drop_time() -> float:
+	if _bomb_dropped_at < 0:
+		return -1.0
+	var t := Time.get_ticks_msec() / 1000.0 - _bomb_dropped_at
+	return t if t < BOMB_DROP_SECONDS else -1.0
+
+
 func _hit_active() -> bool:
 	return _hit_at >= 0 and Time.get_ticks_msec() / 1000.0 - _hit_at < HIT_SECONDS
 
 
 func _animating() -> bool:
-	return _is_winner or _is_target or _hit_active() or _hex_glow_progress() >= 0 or _shimmering() or _leeched()
+	return _is_winner or _is_target or _hit_active() or _hex_glow_progress() >= 0 or _shimmering() or _leeched() \
+		or _trapped() or _bomb_drop_time() >= 0
 
 
 ## Under a shimmer and still in the game (a shimmer on someone knocked out stops showing).
@@ -301,6 +320,11 @@ func _shimmering() -> bool:
 ## Under a leech and still in the game.
 func _leeched() -> bool:
 	return player.is_leeched() and PokerTable.in_game(player)
+
+
+## Has a bomb strapped on and is still in the game.
+func _trapped() -> bool:
+	return player.is_trapped() and PokerTable.in_game(player)
 
 
 # Only redraw every frame while something is animating.
@@ -419,6 +443,10 @@ func _draw_portrait(c: CanvasItem) -> void:
 	_draw_item(c, frame)
 	if _leeched():
 		_draw_leech(c, frame)
+	if _trapped():
+		_draw_bomb(c, frame, 0.0)
+	elif _bomb_drop_time() >= 0:
+		_draw_bomb(c, frame, _bomb_drop_time())
 	if hex_k >= 0:
 		_draw_hex_tint(c, frame, hex_k)
 	if _hit_active():
@@ -702,6 +730,38 @@ func _draw_leech(c: CanvasItem, frame: Rect2) -> void:
 	var art_size := Vector2(art[0].length(), art.size()) * PX
 	var x := frame.end.x - 6 - art_size.x if style == Style.COMPACT_RIGHT else frame.position.x + 6
 	PixelArt.draw_colored(c, art, PixelArt.LEECH_COLORS, Vector2(x, frame.end.y - art_size.y + 4), PX)
+
+
+## The bomb, strapped to the side of the portrait facing the table, near the top (away from the
+## item), its fuse fizzing. [param dropped] seconds after it fell off it's dropping away, fading,
+## its fuse out.
+func _draw_bomb(c: CanvasItem, frame: Rect2, dropped: float) -> void:
+	const PX := 2
+	const GRAVITY := 600.0
+	var art := PixelArt.BOMB if int(Time.get_ticks_msec() / 90.0) % 2 == 0 else PixelArt.BOMB_FIZZ
+	if dropped > 0:
+		art = PixelArt.BOMB.duplicate()
+		for i in 3: # the spark's out
+			art[i] = ".".repeat(art[i].length())
+	var side := _table_side()
+	if side == Vector2.LEFT: # fuse pointing away from the portrait
+		var flipped: Array[String] = []
+		for row in art:
+			flipped.append(row.reverse())
+		art = flipped
+	var art_size := Vector2(art[0].length(), art.size()) * PX
+	var at: Vector2
+	if side == Vector2.UP:
+		at = Vector2(frame.get_center().x - art_size.x / 2, frame.position.y - art_size.y / 2)
+	else:
+		var edge := frame.end.x if side == Vector2.RIGHT else frame.position.x
+		at = Vector2(edge - art_size.x / 2, frame.position.y + 2)
+	at.y += 0.5 * GRAVITY * dropped * dropped
+	var fade := 1.0 - dropped / BOMB_DROP_SECONDS
+	var colors := {}
+	for key: String in PixelArt.BOMB_COLORS:
+		colors[key] = Color(PixelArt.BOMB_COLORS[key], fade)
+	PixelArt.draw_colored(c, art, colors, at.floor(), PX)
 
 
 ## Offsets the shimmer's twinkles so seats under a shimmer don't sparkle in lockstep.

@@ -16,6 +16,10 @@ enum Effect {
 	## The caster picks another player carrying an item; a magpie steals it and brings it to the
 	## caster, who can use it or drop it straight away.
 	MAGPIE,
+	## The caster picks another player and straps a bomb to them. If they fold in the next hand,
+	## or end it with no chips left, it blows them out of the game (their chips go to the
+	## caster); if they see the hand through, it falls off.
+	BOOM_TRAP,
 }
 
 ## How many hands a leech drains its victim for.
@@ -39,7 +43,7 @@ static func random(rng: RandomNumberGenerator = null) -> Effect:
 ## Whether casting [param effect] needs another player picked.
 static func needs_target(effect: Effect) -> bool:
 	match effect:
-		Effect.SHIMMER, Effect.LEECH, Effect.MAGPIE: return true
+		Effect.SHIMMER, Effect.LEECH, Effect.MAGPIE, Effect.BOOM_TRAP: return true
 		Effect.LIGHTNING: return false
 	assert(false, "unknown hex %d" % effect)
 	return false
@@ -52,6 +56,7 @@ static func display_name(effect: Effect) -> String:
 		Effect.LEECH: return "LEECH"
 		Effect.LIGHTNING: return "LIGHTNING"
 		Effect.MAGPIE: return "MAGPIE"
+		Effect.BOOM_TRAP: return "BOOM TRAP"
 	assert(false, "unknown hex %d" % effect)
 	return ""
 
@@ -64,6 +69,7 @@ static func image(effect: Effect) -> Texture2D:
 		Effect.LEECH: path = "res://assets/hexes/leech.png"
 		Effect.LIGHTNING: path = "res://assets/hexes/lightning.png"
 		Effect.MAGPIE: path = "res://assets/hexes/magpie.png"
+		Effect.BOOM_TRAP: path = "res://assets/hexes/boom_trap.png"
 		_: assert(false, "unknown hex %d" % effect)
 	return load(path) if ResourceLoader.exists(path) else null
 
@@ -82,5 +88,7 @@ static func description(effect: Effect) -> String:
 				% LIGHTNING_PERCENT
 		Effect.MAGPIE:
 			return "Pick another player who's carrying an item. A magpie swoops down, steals it and brings it to you, to use or drop straight away."
+		Effect.BOOM_TRAP:
+			return "Strap a bomb to another player. If they fold next hand, or end it broke, they blow up and you get whatever chips they had left. If they see the hand through, the bomb falls off."
 	assert(false, "unknown hex %d" % effect)
 	return ""

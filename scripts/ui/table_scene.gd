@@ -59,6 +59,8 @@ const FELT_LIGHT_SHARE := 0.08
 ## A shot shakes everything but the wallpaper: how far, in whole pixels, and for how long.
 const SHAKE_PIXELS := 10
 const SHAKE_SECONDS := 0.2
+## A boom trap's blast shakes the screen twice as hard, for this long.
+const BOOM_SHAKE_SECONDS := 0.7
 ## Gap between the brass studs along the rail.
 const RAIL_STUD_SPACING := 20.0
 
@@ -149,6 +151,8 @@ func _ready() -> void:
 	_table.leech_delay = LeechBeam.SECONDS
 	_table.magpie_swoop_delay = MagpieBird.SWOOP_SECONDS
 	_table.magpie_carry_delay = MagpieBird.CARRY_SECONDS
+	_table.explosion_delay = BoomExplosion.SECONDS
+	_table.bomb_drop_delay = SeatView.BOMB_DROP_SECONDS
 	_table.wait_for_next_hand = true
 	add_child(_table)
 	_table.setup(GameConfig.create_players())
@@ -559,6 +563,13 @@ func _update_raise_label() -> void:
 
 func _show_actions(p: PokerPlayer, to_call: int, min_to: int, max_to: int) -> void:
 	_to_call = to_call
+	# With a bomb strapped on, folding sets it off.
+	_fold_button.text = "FOLD = BOOM!" if p.is_trapped() else "FOLD"
+	for state in ["font_color", "font_hover_color", "font_pressed_color", "font_focus_color"]:
+		if p.is_trapped():
+			_fold_button.add_theme_color_override(state, PixelArt.HEART_RED)
+		else:
+			_fold_button.remove_theme_color_override(state)
 	_call_button.text = "CHECK" if to_call == 0 else "ALL IN" if to_call >= p.chips else "CALL $%d" % to_call
 
 	var can_raise := p.chips > to_call
@@ -702,6 +713,11 @@ func _connect_table() -> void:
 	_table.lightning_struck.connect(_on_lightning_struck)
 	_table.magpie_swooped.connect(_on_magpie_swooped)
 	_table.item_stolen.connect(_on_item_stolen)
+	_table.bomb_exploded.connect(_on_bomb_exploded)
+	_table.bomb_dropped.connect(func(player: PokerPlayer) -> void:
+		_seats[player.seat].drop_bomb()
+		_seats[player.seat].set_status("BOMB FELL OFF", PixelArt.HEAL_GREEN)
+		_seats[player.seat].refresh())
 	_table.leech_ended.connect(func(player: PokerPlayer) -> void:
 		_seats[player.seat].refresh())
 	_table.item_dropped.connect(func(player: PokerPlayer, item: Item.Kind) -> void:
@@ -947,6 +963,9 @@ func _on_hex_cast(caster: PokerPlayer, effect: Hex.Effect, target: PokerPlayer) 
 		Hex.Effect.LEECH:
 			_seats[target.seat].set_status("LEECHED", PixelArt.GOLD)
 			_seats[target.seat].refresh()
+		Hex.Effect.BOOM_TRAP:
+			_seats[target.seat].set_status("TRAPPED", PixelArt.HEART_RED)
+			_seats[target.seat].refresh()
 	if not caster.is_human():
 		_notices.enqueue("%s cast %s on %s" % [caster.display_name, Hex.display_name(effect).to_lower(),
 			target.display_name if target else "the table"])
@@ -1004,6 +1023,26 @@ func _on_item_stolen(caster: PokerPlayer, target: PokerPlayer, item: Item.Kind) 
 	_seats[caster.seat].refresh()
 
 
+## A boom trap went off on [param victim]: a huge blast over their seat that shakes the whole
+## screen. Once the fireball has swallowed it, the seat is gone for good, leaving a burn mark.
+func _on_bomb_exploded(victim: PokerPlayer, _caster: PokerPlayer) -> void:
+	var seat := _seats[victim.seat]
+	var boom := BoomExplosion.new()
+	boom.center = seat.position + seat.size / 2
+	# Over everything on the table, like a lightning bolt.
+	boom.z_index = LIGHTNING_Z
+	boom.engulfed.connect(func() -> void:
+		seat.visible = false
+		var mark := BurnMark.new()
+		var mark_size := (seat.size / BurnMark.BLOTCH).round()
+		UiTheme.add_at(self, mark, (seat.position - (mark_size - seat.size) / 2).round(), mark_size)
+		# First child: over the table's own drawing, under the seats, cards and buttons.
+		move_child(mark, 0))
+	UiTheme.add_at(self, boom, Vector2.ZERO, get_viewport_rect().size)
+	_shake_screen(SHAKE_PIXELS * 2, BOOM_SHAKE_SECONDS)
+	_notices.enqueue("%s blew up!" % victim.display_name)
+
+
 ## A leech took its share: a gold beam drifts from the victim to the caster as the chips move over.
 func _on_leech_drained(caster: PokerPlayer, victim: PokerPlayer, amount: int) -> void:
 	var beam := LeechBeam.new()
@@ -1043,13 +1082,13 @@ static func _show_hit(target: SeatView, result: Item.ShotResult) -> void:
 
 ## A brief, dying-away jolt of everything on screen but the wallpaper: the whole canvas is
 ## offset by a random whole-pixel amount each frame, and the wallpaper drawn back the other way.
-func _shake_screen() -> void:
+func _shake_screen(pixels := SHAKE_PIXELS, seconds := SHAKE_SECONDS) -> void:
 	if _shake_tween:
 		_shake_tween.kill()
 	_shake_tween = create_tween()
 	_shake_tween.tween_method(func(strength: float) -> void:
-		var reach := roundi(SHAKE_PIXELS * strength)
-		_set_shake(Vector2(randi_range(-reach, reach), randi_range(-reach, reach))), 1.0, 0.0, SHAKE_SECONDS)
+		var reach := roundi(pixels * strength)
+		_set_shake(Vector2(randi_range(-reach, reach), randi_range(-reach, reach))), 1.0, 0.0, seconds)
 	_shake_tween.tween_callback(_set_shake.bind(Vector2.ZERO))
 
 

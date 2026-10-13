@@ -346,6 +346,46 @@ const LEECH_COLORS := {
 	"h": Color("a4b45e"),
 }
 
+# A bomb (8x12) strapped to a portrait, its fuse fizzing; two frames of the spark.
+const BOMB: Array[String] = [
+	"......y.",
+	".....yWy",
+	"......y.",
+	".....F..",
+	"....F...",
+	"...GG...",
+	".KKKKKK.",
+	"KHHKKKKK",
+	"KHKKKKKK",
+	"KKKKKKKK",
+	"KKKKKKKK",
+	".KKKKKK.",
+]
+
+const BOMB_FIZZ: Array[String] = [
+	".....y.y",
+	"......W.",
+	".....y.y",
+	".....F..",
+	"....F...",
+	"...GG...",
+	".KKKKKK.",
+	"KHHKKKKK",
+	"KHKKKKKK",
+	"KKKKKKKK",
+	"KKKKKKKK",
+	".KKKKKK.",
+]
+
+const BOMB_COLORS := {
+	"K": Color("23232e"),
+	"H": Color("6a6a80"),
+	"G": Color("8a8a99"),
+	"F": Color("c8a060"),
+	"y": Color("ffb030"),
+	"W": Color("fff4c0"),
+}
+
 ## Flash over a portrait when a stimpak wins back a heart.
 const HEAL_GREEN := Color("5ad070")
 

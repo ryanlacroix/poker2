@@ -36,6 +36,8 @@ func _test_evaluator() -> void:
 	_test_leech_phase()
 	_test_lightning()
 	_test_magpie()
+	_test_boom_trap()
+	_test_boom_trap_phase()
 	_expect_best_five("Ah Kd 7c 7s 2d 3h Ac", "Ah Ac 7c 7s Kd")
 	_expect_best_five("2h 3h 4h 5h 7h 6d 8c", "7h 5h 4h 3h 2h")
 	_expect_best_five("Ah 2d 3c 4s 5h Kd Kc", "Ah 2d 3c 4s 5h")
@@ -87,6 +89,8 @@ func _play_hands(hands: int, item_chance: float, players: Array[PokerPlayer], do
 	table.magpie_delay = 0
 	table.magpie_swoop_delay = 0
 	table.magpie_carry_delay = 0
+	table.explosion_delay = 0
+	table.bomb_drop_delay = 0
 	table.max_hands = hands
 	table.item_chance = item_chance
 	add_child(table)
@@ -306,6 +310,68 @@ func _test_magpie() -> void:
 	_check(table.can_use_item(caster), "a stolen item can be used straight away, however new it was")
 	_check(table.steal_item(caster, empty) == Item.NONE and caster.hex == Hex.Effect.LIGHTNING, "stealing from empty hands takes nothing")
 	table.free()
+
+
+func _test_boom_trap() -> void:
+	var brain := NpcBrain.new()
+	var caster := PokerPlayer.new("CASTER", 1000, brain)
+	var victim := PokerPlayer.new("VICTIM", 700, brain)
+	var rich := PokerPlayer.new("RICH", 5000, brain)
+	var table := PokerTable.new()
+	table.setup([caster, victim, rich])
+	caster.item = Item.Kind.HEX
+	caster.hex = Hex.Effect.BOOM_TRAP
+
+	# NPCs strap the bomb to the biggest stack.
+	var bold := NpcBrain.new()
+	bold.aggression = 1
+	_check(bold.decide_item(caster, true, table.hex_targets(caster)).target == rich, "an NPC traps the biggest stack")
+
+	_check(not table.cast_hex(caster, caster) and caster.has_item(), "a boom trap can't be cast on yourself")
+	_check(table.cast_hex(caster, victim) and not caster.has_item(), "casting a boom trap uses up the hex")
+	_check(victim.trapped_by == caster, "the bomb is strapped to the victim")
+	caster.item = Item.Kind.HEX
+	_check(victim not in table.hex_targets(caster), "a player can't be trapped twice")
+
+	victim.item = Item.Kind.SHIELD
+	_check(table.detonate(victim) == caster and not victim.is_trapped(), "the bomb goes off once")
+	_check(victim.blown_up and victim.hearts == 0 and not PokerTable.in_game(victim), "a shield doesn't stop the bomb")
+	_check(victim.chips == 0 and caster.chips == 1700, "the victim's chips go to whoever trapped them")
+
+	rich.trapped_by = caster
+	caster.hearts = 0
+	table.detonate(rich)
+	_check(rich.chips == 0 and caster.chips == 1700, "a caster who's out of the game gets nothing")
+	table.free()
+
+
+func _test_boom_trap_phase() -> void:
+	# A bomb is strapped on before a hand. An NPC wearing one never folds, so it either ends the
+	# hand broke and blows up, or sees the hand through and the bomb falls off.
+	var brain := NpcBrain.new()
+	brain.simulations = 20
+	var players: Array[PokerPlayer] = [
+		PokerPlayer.new("A", 1000, brain), PokerPlayer.new("B", 1000, brain),
+		PokerPlayer.new("C", 1000, brain), PokerPlayer.new("D", 1000, brain),
+	]
+	players[1].trapped_by = players[0]
+	# Lambdas capture locals by value, so the results they record go in here.
+	var seen := {"folded": false, "exploded": [], "dropped": []}
+	_play_hands(1, 0, players, func(_table: PokerTable) -> void:
+		var victim := players[1]
+		_check(not seen.folded, "an NPC with a bomb on never folds")
+		_check(not victim.is_trapped(), "the bomb is settled at the end of the hand")
+		if victim.blown_up:
+			_check(seen.exploded == [victim] and seen.dropped.is_empty(), "a victim who ends the hand broke blows up")
+		else:
+			_check(seen.dropped == [victim] and seen.exploded.is_empty() and victim.chips > 0,
+				"a victim who sees the hand through loses the bomb"),
+		func(table: PokerTable) -> void:
+			table.player_acted.connect(func(p: PokerPlayer, action: Poker.Action, _amount: int) -> void:
+				if p == players[1] and action == Poker.Action.FOLD:
+					seen.folded = true)
+			table.bomb_exploded.connect(func(p: PokerPlayer, _caster: PokerPlayer) -> void: seen.exploded.append(p))
+			table.bomb_dropped.connect(func(p: PokerPlayer) -> void: seen.dropped.append(p)))
 
 
 func _test_leech_phase() -> void:

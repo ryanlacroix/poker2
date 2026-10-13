@@ -45,6 +45,10 @@ signal magpie_swooped(caster: PokerPlayer, target: PokerPlayer)
 ## The magpie took [param item] from [param target] for [param caster]; it's carried over for
 ## [member magpie_carry_delay], then [param caster] gets another item turn.
 signal item_stolen(caster: PokerPlayer, target: PokerPlayer, item: Item.Kind)
+## The bomb [param caster] strapped to [param victim] went off, blowing them out of the game.
+signal bomb_exploded(victim: PokerPlayer, caster: PokerPlayer)
+## [param victim] saw the hand through, so the bomb on them fell off.
+signal bomb_dropped(victim: PokerPlayer)
 signal item_dropped(player: PokerPlayer, item: Item.Kind)
 signal item_phase_finished
 ## Emitted between hands when [member wait_for_next_hand] is on; call [method continue_to_next_hand].
@@ -75,6 +79,9 @@ var magpie_delay := 1.0
 ## How long the magpie takes to swoop down to its target's item, then to carry it to the caster.
 var magpie_swoop_delay := 0.45
 var magpie_carry_delay := 0.6
+## Pause while a bomb goes off, and while one falls off.
+var explosion_delay := 2.0
+var bomb_drop_delay := 0.6
 ## 0 = unlimited.
 var max_hands := 0
 ## Pause after each hand for the view: before the item phase (until [method begin_item_phase])
@@ -99,6 +106,8 @@ var _human_decision: Completion
 var _next_hand: Completion
 var _item_phase: Completion
 var _human_item_decision: Completion
+## The view has finished showing this hand's end (see [method _wait_for_view]).
+var _view_caught_up := false
 var _cancelled := false
 
 
@@ -224,6 +233,8 @@ func cast_hex(caster: PokerPlayer, target: PokerPlayer) -> bool:
 		Hex.Effect.LEECH:
 			target.leeched_by = caster
 			target.leech_drains_left = Hex.LEECH_HANDS
+		Hex.Effect.BOOM_TRAP:
+			target.trapped_by = caster
 	chips_changed.emit()
 	return true
 
@@ -257,6 +268,20 @@ func steal_item(thief: PokerPlayer, victim: PokerPlayer) -> int:
 	return item
 
 
+## The bomb on [param victim] goes off: they're out of the game for good, and whatever chips they
+## have left go to whoever trapped them (if that player is still in). Returns that player.
+func detonate(victim: PokerPlayer) -> PokerPlayer:
+	var caster := victim.trapped_by
+	victim.trapped_by = null
+	victim.blown_up = true
+	victim.hearts = 0
+	if caster != victim and not caster.is_out and caster.hearts > 0:
+		caster.chips += victim.chips
+	victim.chips = 0
+	chips_changed.emit()
+	return caster
+
+
 ## Still playing: has chips and hearts left.
 static func in_game(p: PokerPlayer) -> bool:
 	return p.chips > 0 and p.hearts > 0
@@ -284,11 +309,14 @@ func drain_leech(victim: PokerPlayer) -> int:
 
 
 ## Everyone [param caster] could cast their hex on: anyone else still in the game, but for a
-## magpie only those carrying an item.
+## magpie only those carrying an item, and for a boom trap only those without a bomb on already.
 func hex_targets(caster: PokerPlayer) -> Array[PokerPlayer]:
 	var targets := gun_targets(caster)
-	if caster.hex == Hex.Effect.MAGPIE:
-		return targets.filter(func(t: PokerPlayer) -> bool: return t.has_item())
+	match caster.hex:
+		Hex.Effect.MAGPIE:
+			return targets.filter(func(t: PokerPlayer) -> bool: return t.has_item())
+		Hex.Effect.BOOM_TRAP:
+			return targets.filter(func(t: PokerPlayer) -> bool: return not t.is_trapped())
 	return targets
 
 
@@ -322,6 +350,9 @@ func _game_continues() -> bool:
 func start_game() -> void:
 	while _game_continues():
 		await _play_hand()
+		if players.any(func(p: PokerPlayer) -> bool: return p.is_trapped()):
+			await _wait_for_view()
+			await _settle_bombs()
 		if not _game_continues():
 			break
 		await _item_phase_turns()
@@ -345,6 +376,7 @@ func start_game() -> void:
 
 func _play_hand() -> void:
 	hand_number += 1
+	_view_caught_up = false
 	for p in players:
 		p.reset_for_hand()
 	community.clear()
@@ -442,7 +474,13 @@ func _betting_round(start: int) -> void:
 				decision = player.brain.decide(DecisionContext.new(
 					player.hole_cards, community, street, to_call, pot(), current_bet,
 					min_to, max_to, player.chips, big_blind, _count(_in_hand) - 1))
+				# With a bomb strapped on, folding is death: an NPC calls instead.
+				if decision.action == Poker.Action.FOLD and player.is_trapped():
+					decision = Decision.new(Poker.Action.CALL)
 			_apply_action(player, decision)
+			if player.folded and player.is_trapped():
+				bomb_exploded.emit(player, detonate(player))
+				await _wait(explosion_delay)
 		idx = (idx + 1) % players.size()
 
 
@@ -548,11 +586,7 @@ func _resolve_hand() -> void:
 ## didn't fold this hand gets a turn to use it, drop it or keep it, starting with this hand's
 ## dealer and going round in play order. NPCs that keep their item pass without a pause.
 func _item_phase_turns() -> void:
-	if wait_for_next_hand:
-		_item_phase = Completion.new()
-		waiting_for_item_phase.emit()
-		await _item_phase.wait()
-		_item_phase = null
+	await _wait_for_view()
 	await _drain_leeches()
 
 	var n := players.size()
@@ -582,6 +616,36 @@ func _item_turn(p: PokerPlayer) -> void:
 		item_turn_started.emit(p, can_use)
 		await _wait(npc_think_time)
 	await _apply_item_decision(p, item, can_use, decision)
+
+
+## When [member wait_for_next_hand] is on, waits (once a hand) for the view to finish showing the
+## hand's end: see [signal waiting_for_item_phase].
+func _wait_for_view() -> void:
+	if not wait_for_next_hand or _view_caught_up:
+		return
+	_item_phase = Completion.new()
+	waiting_for_item_phase.emit()
+	await _item_phase.wait()
+	_item_phase = null
+	_view_caught_up = true
+
+
+## After a hand: each bomb on a player who ended it with no chips goes off; each on a player who
+## saw it through falls off. (A bomb on someone who folded went off then and there.) A bomb on
+## someone who wasn't dealt in (shot out, or broke, since it was strapped on) just goes away.
+func _settle_bombs() -> void:
+	for p in players:
+		if not p.is_trapped():
+			continue
+		if p.is_out or p.hearts == 0:
+			p.trapped_by = null
+		elif p.chips == 0:
+			bomb_exploded.emit(p, detonate(p))
+			await _wait(explosion_delay)
+		else:
+			p.trapped_by = null
+			bomb_dropped.emit(p)
+			await _wait(bomb_drop_delay)
 
 
 ## Start of the item phase: each leech takes its share from its victim. A leech whose victim or
