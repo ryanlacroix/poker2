@@ -37,6 +37,8 @@ const INTRO_PIXEL_SCALE := 3
 const HEX_MODAL_TEXT_WIDTH := 240
 ## Whole-pixel scale of the hex's picture in the hex modal.
 const HEX_MODAL_IMAGE_SCALE := 2
+## Whole-pixel scale of the next table's splash on the TABLE CLEARED modal.
+const SPLASH_IMAGE_SCALE := 2
 ## Tracers from a shimmering player to the others their shot spread to.
 const SHIMMER_TRACER_COLOR := Color("c8d8ff")
 ## Z index of the winning-hand banner and item notices: above the portraits, the gun and the
@@ -1111,8 +1113,8 @@ func _pop_pot_label() -> void:
 		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
 
 
-## End of the game: a modal over the table. Winning it offers the next table; going bust
-## offers this table again.
+## End of the game: a modal over the table. Winning it shows the next table's splash and offers
+## that table; going bust offers this table again.
 func _show_game_over(winner: PokerPlayer) -> void:
 	if _actions_open:
 		_set_actions_open(false)
@@ -1123,7 +1125,16 @@ func _show_game_over(winner: PokerPlayer) -> void:
 	title.add_theme_font_size_override("font_size", 32)
 	title.add_theme_color_override("font_color", PixelArt.GOLD)
 	box.add_child(title)
-	if not winner.is_human():
+	if winner.is_human():
+		var splash := TableLevel.new(_level.number + 1).splash
+		if splash:
+			var picture := TextureRect.new()
+			picture.texture = splash
+			picture.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+			picture.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+			picture.custom_minimum_size = splash.get_size() * SPLASH_IMAGE_SCALE
+			box.add_child(picture)
+	else:
 		var detail := Label.new()
 		detail.text = "%s leads with $%d." % [winner.display_name, winner.chips]
 		detail.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER

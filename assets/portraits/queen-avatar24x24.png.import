@@ -3,7 +3,7 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://cmitxysnfwp8n"
-path="res://.godot/imported/queen-avatar24x24.png-1990c66a233025645b383f990d4a6796.ctex"
+path="res://.godot/imported/queen-avatar24x24.png-836da9bc09d8e4dcc3f61d2d02adadfb.ctex"
 metadata={
 "vram_texture": false
 }
@@ -11,7 +11,7 @@ metadata={
 [deps]
 
 source_file="res://assets/portraits/queen-avatar24x24.png"
-dest_files=["res://.godot/imported/queen-avatar24x24.png-1990c66a233025645b383f990d4a6796.ctex"]
+dest_files=["res://.godot/imported/queen-avatar24x24.png-836da9bc09d8e4dcc3f61d2d02adadfb.ctex"]
 
 [params]
 

@@ -9,7 +9,8 @@ extends RefCounted
 ## column, then down the right); the table has room for up to
 ## [constant PortraitLayout.MAX_OPPONENTS]. Felt colours: [code]felt[/code] is the band inside the wooden rail,
 ## [code]felt_inner[/code] the lighter felt inside it; [code]grain[/code] is how strong its faint grain is
-## (0 = plain, 1 = full).
+## (0 = plain, 1 = full). [code]splash[/code] (optional) is the picture shown on the modal that
+## ascends the player to that table.
 const TABLES := [
 	{
 		name = "SALOON",
@@ -36,6 +37,7 @@ const TABLES := [
 		],
 		starting_chips = 2000, small_blind = 20, big_blind = 40,
 		felt = Color("561820"), felt_inner = Color("651d26"), grain = 1.0,
+		splash = "res://assets/level-splashes/level2-splash.png",
 	},
 ]
 
@@ -48,6 +50,8 @@ var big_blind: int
 var felt: Color
 var felt_inner: Color
 var grain: float
+## Null if the table has none.
+var splash: Texture2D
 
 
 ## Table [param p_number] (1 = the first).
@@ -62,3 +66,5 @@ func _init(p_number: int) -> void:
 	felt = spec.felt
 	felt_inner = spec.felt_inner
 	grain = spec.grain
+	if spec.has("splash"):
+		splash = load(spec.splash)

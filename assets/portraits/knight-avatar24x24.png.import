@@ -3,7 +3,7 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://dy5kwup84amia"
-path="res://.godot/imported/knight-avatar24x24.png-cd044b222031616c2298d6208044285f.ctex"
+path="res://.godot/imported/knight-avatar24x24.png-0e1d74b0a22e5c95df313bfa34f79d5b.ctex"
 metadata={
 "vram_texture": false
 }
@@ -11,7 +11,7 @@ metadata={
 [deps]
 
 source_file="res://assets/portraits/knight-avatar24x24.png"
-dest_files=["res://.godot/imported/knight-avatar24x24.png-cd044b222031616c2298d6208044285f.ctex"]
+dest_files=["res://.godot/imported/knight-avatar24x24.png-0e1d74b0a22e5c95df313bfa34f79d5b.ctex"]
 
 [params]
 
