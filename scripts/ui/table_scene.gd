@@ -35,6 +35,8 @@ const INTRO_FONT_SIZE := 16
 const INTRO_PIXEL_SCALE := 3
 ## Width of the text in the hex modal, which wraps to fit.
 const HEX_MODAL_TEXT_WIDTH := 240
+## Whole-pixel scale of the hex's picture in the hex modal.
+const HEX_MODAL_IMAGE_SCALE := 2
 ## Tracers from a shimmering player to the others their shot spread to.
 const SHIMMER_TRACER_COLOR := Color("c8d8ff")
 ## Z index of the winning-hand banner and item notices: above the portraits, the gun and the
@@ -837,6 +839,12 @@ func _show_hex_modal(effect: Hex.Effect) -> void:
 	title.add_theme_font_size_override("font_size", 32)
 	title.add_theme_color_override("font_color", PixelArt.HEART_RED)
 	box.add_child(title)
+	var picture := TextureRect.new()
+	picture.texture = Hex.image(effect)
+	picture.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	picture.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	picture.custom_minimum_size = picture.texture.get_size() * HEX_MODAL_IMAGE_SCALE
+	box.add_child(picture)
 	var detail := Label.new()
 	detail.text = Hex.description(effect)
 	detail.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER

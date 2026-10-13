@@ -44,6 +44,15 @@ static func display_name(effect: Effect) -> String:
 	return ""
 
 
+## Picture of [param effect] (70x37), shown in the cast modal.
+static func image(effect: Effect) -> Texture2D:
+	match effect:
+		Effect.SHIMMER: return load("res://assets/hexes/shimmer.png")
+		Effect.LEECH: return load("res://assets/hexes/leech.png")
+	assert(false, "unknown hex %d" % effect)
+	return null
+
+
 ## What [param effect] does, shown in the cast modal.
 static func description(effect: Effect) -> String:
 	match effect:
