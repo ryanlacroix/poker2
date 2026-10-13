@@ -1,7 +1,7 @@
 [gd_resource type="Resource" script_class="NpcBrain" format=3]
 
 [ext_resource type="Script" path="res://scripts/ai/npc_brain.gd" id="1"]
-[ext_resource type="Texture2D" path="res://assets/new_portraits24x24/king-avatar24x24.png" id="2"]
+[ext_resource type="Texture2D" path="res://assets/portraits/king-avatar24x24.png" id="2"]
 
 [resource]
 script = ExtResource("1")

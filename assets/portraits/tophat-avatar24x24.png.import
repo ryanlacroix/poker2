@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://b1tbcudqy87b4"
-path="res://.godot/imported/lucky.png-6d3814d7fbfc314f765bfc2f7c166781.ctex"
+uid="uid://ca1ykhduo7pxn"
+path="res://.godot/imported/tophat-avatar24x24.png-2ab2dbdd00584adb14fb386a21fda831.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/portraits/lucky.png"
-dest_files=["res://.godot/imported/lucky.png-6d3814d7fbfc314f765bfc2f7c166781.ctex"]
+source_file="res://assets/portraits/tophat-avatar24x24.png"
+dest_files=["res://.godot/imported/tophat-avatar24x24.png-2ab2dbdd00584adb14fb386a21fda831.ctex"]
 
 [params]
 

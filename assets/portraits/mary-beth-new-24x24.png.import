@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://cbi7hogqoe01a"
-path="res://.godot/imported/lucky_injured.png-59b9be82c6461821ab6decdd4e3d1b4b.ctex"
+uid="uid://sritof2qmed3"
+path="res://.godot/imported/mary-beth-new-24x24.png-e13738d38dffce47ec57573032add3b3.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/portraits/lucky_injured.png"
-dest_files=["res://.godot/imported/lucky_injured.png-59b9be82c6461821ab6decdd4e3d1b4b.ctex"]
+source_file="res://assets/portraits/mary-beth-new-24x24.png"
+dest_files=["res://.godot/imported/mary-beth-new-24x24.png-e13738d38dffce47ec57573032add3b3.ctex"]
 
 [params]
 

@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://dawfw10yn6wqa"
-path="res://.godot/imported/peasant_injured.png-3376ca9257f13471b17002c9542f21b7.ctex"
+uid="uid://be70um5dhlyrs"
+path="res://.godot/imported/nobleman-avatar24x24.png-bb2cc3785a8d5170ae88ad3760981f69.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/portraits/peasant_injured.png"
-dest_files=["res://.godot/imported/peasant_injured.png-3376ca9257f13471b17002c9542f21b7.ctex"]
+source_file="res://assets/portraits/nobleman-avatar24x24.png"
+dest_files=["res://.godot/imported/nobleman-avatar24x24.png-bb2cc3785a8d5170ae88ad3760981f69.ctex"]
 
 [params]
 

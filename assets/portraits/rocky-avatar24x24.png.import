@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://cap2d22g8giod"
-path="res://.godot/imported/queen.png-b8ec7bb525c8e89d8e983792ced36a50.ctex"
+uid="uid://3oiqq4nnc6w"
+path="res://.godot/imported/rocky-avatar24x24.png-f441031fdebe6d656d2b80fd482c815a.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/portraits/queen.png"
-dest_files=["res://.godot/imported/queen.png-b8ec7bb525c8e89d8e983792ced36a50.ctex"]
+source_file="res://assets/portraits/rocky-avatar24x24.png"
+dest_files=["res://.godot/imported/rocky-avatar24x24.png-f441031fdebe6d656d2b80fd482c815a.ctex"]
 
 [params]
 

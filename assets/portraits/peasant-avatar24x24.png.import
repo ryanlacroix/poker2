@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://3oiqq4nnc6w"
-path="res://.godot/imported/rocky-avatar24x24.png-f441031fdebe6d656d2b80fd482c815a.ctex"
+uid="uid://tgru46bncpee"
+path="res://.godot/imported/peasant-avatar24x24.png-baa75d52669119bd3d7dab88199ec27f.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/new_portraits24x24/rocky-avatar24x24.png"
-dest_files=["res://.godot/imported/rocky-avatar24x24.png-f441031fdebe6d656d2b80fd482c815a.ctex"]
+source_file="res://assets/portraits/peasant-avatar24x24.png"
+dest_files=["res://.godot/imported/peasant-avatar24x24.png-baa75d52669119bd3d7dab88199ec27f.ctex"]
 
 [params]
 

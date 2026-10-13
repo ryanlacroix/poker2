@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://bh4logqskjcr6"
-path="res://.godot/imported/maverick.png-60438e5e2c6963773cc146d3c6e1c824.ctex"
+uid="uid://dy5kwup84amia"
+path="res://.godot/imported/knight-avatar24x24.png-cd044b222031616c2298d6208044285f.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/portraits/maverick.png"
-dest_files=["res://.godot/imported/maverick.png-60438e5e2c6963773cc146d3c6e1c824.ctex"]
+source_file="res://assets/portraits/knight-avatar24x24.png"
+dest_files=["res://.godot/imported/knight-avatar24x24.png-cd044b222031616c2298d6208044285f.ctex"]
 
 [params]
 

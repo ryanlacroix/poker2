@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://cw7bdl3hotdrt"
-path="res://.godot/imported/duke.png-59463ed05da2f1a4991791bd99c15356.ctex"
+uid="uid://3lmqqvkryuq2"
+path="res://.godot/imported/king-avatar24x24.png-9a391c0ee065572cf4fea7dd6240498b.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/portraits/duke.png"
-dest_files=["res://.godot/imported/duke.png-59463ed05da2f1a4991791bd99c15356.ctex"]
+source_file="res://assets/portraits/king-avatar24x24.png"
+dest_files=["res://.godot/imported/king-avatar24x24.png-9a391c0ee065572cf4fea7dd6240498b.ctex"]
 
 [params]
 
