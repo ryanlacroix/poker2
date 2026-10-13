@@ -314,17 +314,24 @@ func _animating() -> bool:
 
 ## Under a shimmer and still in the game (a shimmer on someone knocked out stops showing).
 func _shimmering() -> bool:
-	return player.is_shimmering() and PokerTable.in_game(player)
+	return player.is_shimmering() and _still_playing()
 
 
 ## Under a leech and still in the game.
 func _leeched() -> bool:
-	return player.is_leeched() and PokerTable.in_game(player)
+	return player.is_leeched() and _still_playing()
 
 
-## Has a bomb strapped on and is still in the game.
+## Still in the game, counting being all in: no chips in front of them, but some in the pot this
+## hand. (Once the hand is paid out, a player who lost it all is out.)
+func _still_playing() -> bool:
+	return player.hearts > 0 and (player.chips > 0 or player.total_bet > 0)
+
+
+## Has a bomb strapped on and was dealt in. All in counts: the bomb stays on until the hand is
+## settled, even with no chips left in front of them.
 func _trapped() -> bool:
-	return player.is_trapped() and PokerTable.in_game(player)
+	return player.is_trapped() and not player.is_out and player.hearts > 0
 
 
 # Only redraw every frame while something is animating.
