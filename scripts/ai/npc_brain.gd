@@ -95,10 +95,10 @@ static func _pick_target(me: PokerPlayer, targets: Array[PokerPlayer]) -> PokerP
 	return best
 
 
-## Who to cast [param effect] on, or null if it needs nobody. Both hexes go on the biggest stack
-## that doesn't already have one: a shimmer draws everyone's fire and its spread never hits the
-## caster, so it marks the player the caster most wants shot; a leech takes a share of the
-## victim's chips, so the richer the better.
+## Who to cast [param effect] on, or null if it needs nobody (lightning). Shimmer and leech go on
+## the biggest stack that doesn't already have one: a shimmer draws everyone's fire and its spread
+## never hits the caster, so it marks the player the caster most wants shot; a leech takes a share
+## of the victim's chips, so the richer the better.
 static func _pick_hex_target(effect: Hex.Effect, targets: Array[PokerPlayer]) -> PokerPlayer:
 	if not Hex.needs_target(effect):
 		return null

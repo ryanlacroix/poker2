@@ -37,6 +37,8 @@ signal shimmer_ended(player: PokerPlayer)
 signal leech_drained(caster: PokerPlayer, victim: PokerPlayer, amount: int)
 ## The leech on [param victim] dropped off: its hands are up, or one of the pair is out.
 signal leech_ended(victim: PokerPlayer)
+## Lightning [param caster] called down struck [param target].
+signal lightning_struck(caster: PokerPlayer, target: PokerPlayer, result: Item.ShotResult)
 signal item_dropped(player: PokerPlayer, item: Item.Kind)
 signal item_phase_finished
 ## Emitted between hands when [member wait_for_next_hand] is on; call [method continue_to_next_hand].
@@ -60,6 +62,8 @@ var shot_delay := 0.9
 var spread_delay := 0.35
 ## Pause after each leech drains its victim, so the transfer can be seen before the next.
 var leech_delay := 0.9
+## Pause before each lightning strike, so they land one by one.
+var lightning_delay := 1.0
 ## 0 = unlimited.
 var max_hands := 0
 ## Pause after each hand for the view: before the item phase (until [method begin_item_phase])
@@ -211,6 +215,20 @@ func cast_hex(caster: PokerPlayer, target: PokerPlayer) -> bool:
 			target.leech_drains_left = Hex.LEECH_HANDS
 	chips_changed.emit()
 	return true
+
+
+## Who the lightning [param caster] calls down will strike: each other player still in the game,
+## with a [constant Hex.LIGHTNING_PERCENT]% chance each, in seat order. Hit each with
+## [method strike_lightning].
+func roll_lightning(caster: PokerPlayer) -> Array[PokerPlayer]:
+	return hex_targets(caster).filter(func(_p: PokerPlayer) -> bool:
+		return randi_range(0, 99) < Hex.LIGHTNING_PERCENT)
+
+
+## Lightning [param caster] called down strikes [param target]: breaks their shield, or takes a
+## heart (their chips go to [param caster] if it's their last).
+func strike_lightning(caster: PokerPlayer, target: PokerPlayer) -> Item.ShotResult:
+	return _hit(target, caster)
 
 
 ## Still playing: has chips and hearts left.
@@ -570,6 +588,10 @@ func _apply_item_decision(p: PokerPlayer, item: Item.Kind, can_use: bool, decisi
 				var effect := p.hex
 				if cast_hex(p, target):
 					hex_cast.emit(p, effect, target if Hex.needs_target(effect) else null)
+					if effect == Hex.Effect.LIGHTNING:
+						for struck in roll_lightning(p):
+							await _wait(lightning_delay)
+							lightning_struck.emit(p, struck, strike_lightning(p, struck))
 					await _wait(shot_delay)
 		Item.Action.DROP:
 			p.item = Item.NONE

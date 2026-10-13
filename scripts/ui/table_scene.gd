@@ -44,6 +44,9 @@ const SHIMMER_TRACER_COLOR := Color("c8d8ff")
 ## Z index of the winning-hand banner and item notices: above the portraits, the gun and the
 ## chip-change labels (all at SeatView.DARKEN_Z + 1), below the DEBUG popup.
 const BANNER_Z := SeatView.DARKEN_Z + 2
+## Z index of a lightning strike's darkening and its bolt: over everything on the table, cards
+## and banners included, below the DEBUG popup and modals.
+const LIGHTNING_Z := DebugMenu.MODAL_Z - 1
 ## The "TABLE N" label: a little bigger than the players' names, to fill the header strip.
 const TABLE_LABEL_FONT_SIZE := 18
 ## Offset (down and right) of the hard black shadow under the table's name.
@@ -104,6 +107,8 @@ var _gun: GunView
 var _shot_darken: ColorRect
 var _shot_tracer: ShotTracer
 var _shot_darken_tween: Tween
+var _lightning_darken: ColorRect
+var _lightning_darken_tween: Tween
 var _shake_tween: Tween
 ## The screen's current shake; the wallpaper is drawn this much the other way so it stays put.
 var _shake := Vector2.ZERO
@@ -366,6 +371,12 @@ func _build_ui() -> void:
 	_shot_tracer = ShotTracer.new()
 	_shot_tracer.z_index = SeatView.DARKEN_Z
 	UiTheme.add_at(self, _shot_tracer, Vector2.ZERO, viewport_size)
+	# A lightning strike's flash-to-dark over the whole screen; each bolt is added after it, on top.
+	_lightning_darken = ColorRect.new()
+	_lightning_darken.color = Color(0, 0, 0, 0)
+	_lightning_darken.mouse_filter = MOUSE_FILTER_IGNORE
+	_lightning_darken.z_index = LIGHTNING_Z
+	UiTheme.add_at(self, _lightning_darken, -Vector2.ONE * SHAKE_PIXELS, viewport_size + Vector2.ONE * SHAKE_PIXELS * 2)
 	_target_hint = Label.new()
 	_target_hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_target_hint.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
@@ -685,6 +696,7 @@ func _connect_table() -> void:
 	_table.shimmer_ended.connect(func(player: PokerPlayer) -> void:
 		_seats[player.seat].refresh())
 	_table.leech_drained.connect(_on_leech_drained)
+	_table.lightning_struck.connect(_on_lightning_struck)
 	_table.leech_ended.connect(func(player: PokerPlayer) -> void:
 		_seats[player.seat].refresh())
 	_table.item_dropped.connect(func(player: PokerPlayer, item: Item.Kind) -> void:
@@ -933,6 +945,20 @@ func _on_shot_spread(source: PokerPlayer, target_player: PokerPlayer, result: It
 	_shake_screen()
 
 
+## Lightning struck [param target_player]: the whole screen goes dark but for a bolt coming down
+## on them, then fades back in, and the hit lands as if shot.
+func _on_lightning_struck(_caster: PokerPlayer, target_player: PokerPlayer, result: Item.ShotResult) -> void:
+	var target := _seats[target_player.seat]
+	_darken_for_lightning()
+	var bolt := LightningBolt.new()
+	bolt.to = target.portrait_center()
+	# Over the darkening, so only the bolt shows through.
+	bolt.z_index = LIGHTNING_Z
+	UiTheme.add_at(self, bolt, Vector2.ZERO, get_viewport_rect().size)
+	_show_hit(target, result)
+	_shake_screen()
+
+
 ## A leech took its share: a gold beam drifts from the victim to the caster as the chips move over.
 func _on_leech_drained(caster: PokerPlayer, victim: PokerPlayer, amount: int) -> void:
 	var beam := LeechBeam.new()
@@ -1000,6 +1026,16 @@ func _darken_for_shot() -> void:
 	_shot_darken.color = Color(0, 0, 0, 0.8)
 	_shot_darken_tween = create_tween()
 	_shot_darken_tween.tween_property(_shot_darken, "color:a", 0.0, 0.5) \
+		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+
+
+## Everything on screen drops to near-black on a lightning strike, then quickly fades back.
+func _darken_for_lightning() -> void:
+	if _lightning_darken_tween:
+		_lightning_darken_tween.kill()
+	_lightning_darken.color = Color(0, 0, 0, 0.85)
+	_lightning_darken_tween = create_tween()
+	_lightning_darken_tween.tween_property(_lightning_darken, "color:a", 0.0, 0.5) \
 		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
 
 

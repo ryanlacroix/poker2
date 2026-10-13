@@ -34,6 +34,7 @@ func _test_evaluator() -> void:
 	_test_shimmer_phase()
 	_test_leech()
 	_test_leech_phase()
+	_test_lightning()
 	_expect_best_five("Ah Kd 7c 7s 2d 3h Ac", "Ah Ac 7c 7s Kd")
 	_expect_best_five("2h 3h 4h 5h 7h 6d 8c", "7h 5h 4h 3h 2h")
 	_expect_best_five("Ah 2d 3c 4s 5h Kd Kc", "Ah 2d 3c 4s 5h")
@@ -81,6 +82,7 @@ func _play_hands(hands: int, item_chance: float, players: Array[PokerPlayer], do
 	table.between_hands_delay = 0
 	table.shot_delay = 0
 	table.leech_delay = 0
+	table.lightning_delay = 0
 	table.max_hands = hands
 	table.item_chance = item_chance
 	add_child(table)
@@ -240,6 +242,32 @@ func _test_leech() -> void:
 	for i in 100:
 		rolled[Hex.random(rng)] = true
 	_check(rolled.size() == Hex.Effect.size(), "every hex effect can be rolled")
+	table.free()
+
+
+func _test_lightning() -> void:
+	var brain := NpcBrain.new()
+	var caster := PokerPlayer.new("CASTER", 1000, brain)
+	var broke := PokerPlayer.new("BROKE", 0, brain)
+	var players: Array[PokerPlayer] = [caster, broke]
+	for i in 400:
+		players.append(PokerPlayer.new("P%d" % i, 1000, brain))
+	var table := PokerTable.new()
+	table.setup(players)
+	caster.item = Item.Kind.HEX
+	caster.hex = Hex.Effect.LIGHTNING
+	_check(table.cast_hex(caster, null) and not caster.has_item(), "lightning is cast with no target, using up the hex")
+	var struck := table.roll_lightning(caster)
+	_check(caster not in struck and broke not in struck, "lightning never strikes the caster or anyone out of the game")
+	_check(absi(struck.size() - 200) < 50, "lightning strikes about half the others (%d of 400)" % struck.size())
+
+	var target := players[2]
+	target.item = Item.Kind.SHIELD
+	_check(table.strike_lightning(caster, target) == Item.ShotResult.SHIELD_BROKE and target.hearts == 3, "a shield takes a lightning strike")
+	_check(table.strike_lightning(caster, target) == Item.ShotResult.HIT and target.hearts == 2, "a strike takes a heart")
+	target.hearts = 1
+	_check(table.strike_lightning(caster, target) == Item.ShotResult.ELIMINATED and caster.chips == 2000,
+		"a fatal strike gives the caster the victim's chips")
 	table.free()
 
 
