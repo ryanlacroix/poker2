@@ -119,6 +119,8 @@ var _win_banner: WinBanner
 var _notices: NoticeBanner
 var _item_news: Array[String] = [] # this hand's item pickups, announced once it's settled
 var _targeting := false
+## While picking a seat for a debug action: what to do with the player picked (instead of an item turn's use).
+var _debug_pick: Callable
 var _hex_modal: Control # the hex being cast, open until CAST is pressed
 var _to_call := 0
 
@@ -426,6 +428,8 @@ func _build_ui() -> void:
 	_debug_menu.give_hex.connect(_debug_give_hex)
 	_debug_menu.give_npcs_stimpaks.connect(_debug_give_npcs_stimpaks)
 	_debug_menu.give_chips.connect(_debug_give_chips)
+	_debug_menu.explode_npc.connect(_debug_explode_npc)
+	_debug_menu.set_npc_chips.connect(_debug_set_npc_chips)
 	_debug_menu.lose_heart.connect(_debug_lose_heart)
 	_debug_menu.win_table.connect(func() -> void: _show_game_over(_table.players[0]))
 
@@ -832,6 +836,35 @@ func _debug_give_npcs_stimpaks() -> void:
 		_seats[p.seat].refresh()
 
 
+## Debug: blows up a random NPC still in the game, as if a boom trap went off on them. Their
+## chips go to nobody, and they sit out the rest of this hand.
+func _debug_explode_npc() -> void:
+	var npcs := _table.players.filter(func(p: PokerPlayer) -> bool:
+		return not p.is_human() and PokerTable.in_game(p))
+	if npcs.is_empty():
+		return
+	var victim: PokerPlayer = npcs.pick_random()
+	victim.folded = true
+	victim.trapped_by = victim # so nobody collects their chips
+	_table.bomb_exploded.emit(victim, _table.detonate(victim))
+
+
+## Debug: the human picks an NPC still in the game, whose stack is set to [param amount]. Not
+## while already picking a target.
+func _debug_set_npc_chips(amount: int) -> void:
+	if _targeting:
+		return
+	var npcs: Array[PokerPlayer] = []
+	npcs.assign(_table.players.filter(func(p: PokerPlayer) -> bool:
+		return not p.is_human() and PokerTable.in_game(p)))
+	if npcs.is_empty():
+		return
+	_debug_pick = func(p: PokerPlayer) -> void:
+		p.chips = amount
+		_refresh_seats()
+	_enter_target_mode(npcs, false, "PICK AN NPC")
+
+
 ## Debug: adds [param amount] to the human's stack.
 func _debug_give_chips(amount: int) -> void:
 	_table.players[0].chips += amount
@@ -919,6 +952,11 @@ func _on_seat_targeted(target: SeatView) -> void:
 	for seat in _seats:
 		seat.set_targetable(false)
 	_target_hint.visible = false
+	if _debug_pick.is_valid():
+		var pick := _debug_pick
+		_debug_pick = Callable()
+		pick.call(target.player)
+		return
 	_submit_item_decision(ItemDecision.new(Item.Action.USE, target.player))
 
 
@@ -1029,6 +1067,11 @@ func _on_bomb_exploded(victim: PokerPlayer, _caster: PokerPlayer) -> void:
 	var seat := _seats[victim.seat]
 	var boom := BoomExplosion.new()
 	boom.center = seat.position + seat.size / 2
+	var scatter := FragmentScatter.new()
+	UiTheme.add_at(self, scatter, Vector2.ZERO, get_viewport_rect().size)
+	# First child: over the table's own drawing, under the seats, cards and buttons.
+	move_child(scatter, 0)
+	boom.scatter = scatter
 	# Over everything on the table, like a lightning bolt.
 	boom.z_index = LIGHTNING_Z
 	boom.engulfed.connect(func() -> void:
@@ -1233,8 +1276,8 @@ func _pop_pot_label() -> void:
 		.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
 
 
-## End of the game: a modal over the table. Winning it shows the next table's splash and offers
-## that table; going bust offers this table again.
+## End of the game: a modal over the table. Winning it shows the next table's splash and blurb
+## and offers that table; going bust offers this table again.
 func _show_game_over(winner: PokerPlayer) -> void:
 	if _actions_open:
 		_set_actions_open(false)
@@ -1246,14 +1289,22 @@ func _show_game_over(winner: PokerPlayer) -> void:
 	title.add_theme_color_override("font_color", PixelArt.GOLD)
 	box.add_child(title)
 	if winner.is_human():
-		var splash := TableLevel.new(_level.number + 1).splash
-		if splash:
+		var next_level := TableLevel.new(_level.number + 1)
+		if next_level.splash:
 			var picture := TextureRect.new()
-			picture.texture = splash
+			picture.texture = next_level.splash
 			picture.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 			picture.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-			picture.custom_minimum_size = splash.get_size() * SPLASH_IMAGE_SCALE
+			picture.custom_minimum_size = next_level.splash.get_size() * SPLASH_IMAGE_SCALE
 			box.add_child(picture)
+		if next_level.blurb:
+			var blurb := Label.new()
+			blurb.text = next_level.blurb
+			blurb.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+			blurb.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+			blurb.custom_minimum_size.x = HEX_MODAL_TEXT_WIDTH
+			blurb.add_theme_color_override("font_color", Color.WHITE)
+			box.add_child(blurb)
 	else:
 		var detail := Label.new()
 		detail.text = "%s leads with $%d." % [winner.display_name, winner.chips]

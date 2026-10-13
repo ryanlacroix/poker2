@@ -5,12 +5,12 @@ extends RefCounted
 ## reuse its setup.
 
 ## Table 1 first. [code]name[/code] is shown at the top of the screen. [code]opponents[/code]
-## are the NPC personalities seated there, in seat order (clockwise from the human: up the left
-## column, then down the right); the table has room for up to
+## are the NPC personalities seated there, in a random order each game (seats go clockwise from
+## the human: up the left column, then down the right); the table has room for up to
 ## [constant PortraitLayout.MAX_OPPONENTS]. Felt colours: [code]felt[/code] is the band inside the wooden rail,
 ## [code]felt_inner[/code] the lighter felt inside it; [code]grain[/code] is how strong its faint grain is
 ## (0 = plain, 1 = full). [code]splash[/code] (optional) is the picture shown on the modal that
-## ascends the player to that table.
+## ascends the player to that table, and [code]blurb[/code] (optional) a line of story under it.
 const TABLES := [
 	{
 		name = "SALOON",
@@ -38,6 +38,7 @@ const TABLES := [
 		starting_chips = 2000, small_blind = 20, big_blind = 40,
 		felt = Color("561820"), felt_inner = Color("651d26"), grain = 1.0,
 		splash = "res://assets/level-splashes/level2-splash.png",
+		blurb = "Your journey brings you to the steps of a castle...",
 	},
 ]
 
@@ -52,6 +53,8 @@ var felt_inner: Color
 var grain: float
 ## Null if the table has none.
 var splash: Texture2D
+## "" if the table has none.
+var blurb := ""
 
 
 ## Table [param p_number] (1 = the first).
@@ -68,3 +71,4 @@ func _init(p_number: int) -> void:
 	grain = spec.grain
 	if spec.has("splash"):
 		splash = load(spec.splash)
+	blurb = spec.get("blurb", "")

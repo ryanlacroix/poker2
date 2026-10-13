@@ -22,11 +22,14 @@ func table_level() -> TableLevel:
 	return TableLevel.new(table_number)
 
 
+## The human first, then the table's NPCs in a random order, so they take different seats each game.
 func create_players() -> Array[PokerPlayer]:
 	var level := table_level()
 	var starting_chips := level.starting_chips
 	var players: Array[PokerPlayer] = [PokerPlayer.new(player_name, starting_chips, null, starting_hearts)]
-	for path in level.opponents:
+	var opponents := level.opponents.duplicate()
+	opponents.shuffle()
+	for path in opponents:
 		var brain: NpcBrain = load(path)
 		players.append(PokerPlayer.new(brain.display_name, starting_chips, brain, starting_hearts))
 	return players

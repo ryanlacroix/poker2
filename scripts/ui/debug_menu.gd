@@ -13,6 +13,11 @@ signal give_npcs_stimpaks
 signal give_chips(amount: int)
 ## Emitted when LOSE A HEART is picked; the menu closes itself.
 signal lose_heart
+## Emitted when SET NPC $50 is picked (the table then has the human pick which); the menu
+## closes itself.
+signal set_npc_chips(amount: int)
+## Emitted when EXPLODE NPC is picked; the menu closes itself.
+signal explode_npc
 ## Emitted when WIN TABLE is picked (shows the win screen, to reach the next table); the
 ## menu closes itself.
 signal win_table
@@ -21,6 +26,11 @@ signal win_table
 const MODAL_Z := 10
 ## Chips handed over by GIVE $.
 const GIVE_CHIPS := 1000
+## What SET NPC $ sets the picked NPC's stack to.
+const SET_NPC_CHIPS := 50
+## Size of each action button; they're laid out in two columns, with CLOSE under them.
+const BUTTON_SIZE := Vector2(150, 36)
+const GAP := 8
 
 
 func _ready() -> void:
@@ -43,7 +53,7 @@ func _ready() -> void:
 	var panel := PanelContainer.new()
 	center.add_child(panel)
 	var box := VBoxContainer.new()
-	box.add_theme_constant_override("separation", 8)
+	box.add_theme_constant_override("separation", GAP)
 	panel.add_child(box)
 
 	var title := Label.new()
@@ -51,34 +61,39 @@ func _ready() -> void:
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	title.add_theme_color_override("font_color", PixelArt.GOLD)
 	box.add_child(title)
-	_add_button(box, "GIVE GUN", _give.bind(Item.Kind.GUN))
-	_add_button(box, "GIVE SHIELD", _give.bind(Item.Kind.SHIELD))
-	_add_button(box, "GIVE STIMPAK", _give.bind(Item.Kind.STIMPAK))
+	var grid := GridContainer.new()
+	grid.columns = 2
+	grid.add_theme_constant_override("h_separation", GAP)
+	grid.add_theme_constant_override("v_separation", GAP)
+	box.add_child(grid)
+	_add_button(grid, "GIVE GUN", _give.bind(Item.Kind.GUN))
+	_add_button(grid, "GIVE SHIELD", _give.bind(Item.Kind.SHIELD))
+	_add_button(grid, "GIVE STIMPAK", _give.bind(Item.Kind.STIMPAK))
+	_add_button(grid, "GIVE NPCS STIMPAKS", _picked(give_npcs_stimpaks.emit))
 	for effect: Hex.Effect in Hex.Effect.values():
-		_add_button(box, "GIVE %s HEX" % Hex.display_name(effect), func() -> void:
-			hide()
-			give_hex.emit(effect))
-	_add_button(box, "GIVE NPCS STIMPAKS", func() -> void:
-		hide()
-		give_npcs_stimpaks.emit())
-	_add_button(box, "GIVE $%d" % GIVE_CHIPS, func() -> void:
-		hide()
-		give_chips.emit(GIVE_CHIPS))
-	_add_button(box, "LOSE A HEART", func() -> void:
-		hide()
-		lose_heart.emit())
-	_add_button(box, "WIN TABLE", func() -> void:
-		hide()
-		win_table.emit())
+		_add_button(grid, "GIVE %s HEX" % Hex.display_name(effect), _picked(give_hex.emit.bind(effect)))
+	_add_button(grid, "GIVE $%d" % GIVE_CHIPS, _picked(give_chips.emit.bind(GIVE_CHIPS)))
+	_add_button(grid, "LOSE A HEART", _picked(lose_heart.emit))
+	_add_button(grid, "EXPLODE NPC", _picked(explode_npc.emit))
+	_add_button(grid, "SET NPC $%d" % SET_NPC_CHIPS, _picked(set_npc_chips.emit.bind(SET_NPC_CHIPS)))
+	_add_button(grid, "WIN TABLE", _picked(win_table.emit))
+	# Across both columns.
 	_add_button(box, "CLOSE", hide)
 
 
-static func _add_button(box: Container, text: String, on_pressed: Callable) -> void:
+static func _add_button(container: Container, text: String, on_pressed: Callable) -> void:
 	var button := Button.new()
 	button.text = text
-	button.custom_minimum_size = Vector2(160, 36)
+	button.custom_minimum_size = BUTTON_SIZE
 	button.pressed.connect(on_pressed)
-	box.add_child(button)
+	container.add_child(button)
+
+
+## Closes the menu, then does [param action].
+func _picked(action: Callable) -> Callable:
+	return func() -> void:
+		hide()
+		action.call()
 
 
 func _give(item: Item.Kind) -> void:
