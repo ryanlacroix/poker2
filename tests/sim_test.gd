@@ -35,6 +35,7 @@ func _test_evaluator() -> void:
 	_test_leech()
 	_test_leech_phase()
 	_test_lightning()
+	_test_magpie()
 	_expect_best_five("Ah Kd 7c 7s 2d 3h Ac", "Ah Ac 7c 7s Kd")
 	_expect_best_five("2h 3h 4h 5h 7h 6d 8c", "7h 5h 4h 3h 2h")
 	_expect_best_five("Ah 2d 3c 4s 5h Kd Kc", "Ah 2d 3c 4s 5h")
@@ -83,6 +84,9 @@ func _play_hands(hands: int, item_chance: float, players: Array[PokerPlayer], do
 	table.shot_delay = 0
 	table.leech_delay = 0
 	table.lightning_delay = 0
+	table.magpie_delay = 0
+	table.magpie_swoop_delay = 0
+	table.magpie_carry_delay = 0
 	table.max_hands = hands
 	table.item_chance = item_chance
 	add_child(table)
@@ -268,6 +272,39 @@ func _test_lightning() -> void:
 	target.hearts = 1
 	_check(table.strike_lightning(caster, target) == Item.ShotResult.ELIMINATED and caster.chips == 2000,
 		"a fatal strike gives the caster the victim's chips")
+	table.free()
+
+
+func _test_magpie() -> void:
+	var brain := NpcBrain.new()
+	var caster := PokerPlayer.new("CASTER", 1000, brain)
+	var empty := PokerPlayer.new("EMPTY", 1000, brain)
+	var shielded := PokerPlayer.new("SHIELDED", 5000, brain)
+	var hexed := PokerPlayer.new("HEXED", 1000, brain)
+	var table := PokerTable.new()
+	table.setup([caster, empty, shielded, hexed])
+	table.hand_number = 5
+	caster.item = Item.Kind.HEX
+	caster.hex = Hex.Effect.MAGPIE
+	_check(not table.can_use_item(caster), "a magpie can't be cast when nobody else has an item")
+	shielded.item = Item.Kind.SHIELD
+	hexed.item = Item.Kind.HEX
+	hexed.hex = Hex.Effect.LIGHTNING
+	hexed.item_gained_on_hand = 5
+	var targets := table.hex_targets(caster)
+	_check(targets.size() == 2 and shielded in targets and hexed in targets, "a magpie can only pick players carrying an item")
+	_check(not table.cast_hex(caster, empty) and caster.has_item(), "a magpie can't be cast on someone empty-handed")
+
+	# NPCs send the magpie after the best item: a hex over a shield, even on a smaller stack.
+	var bold := NpcBrain.new()
+	bold.aggression = 1
+	_check(bold.decide_item(caster, true, table.hex_targets(caster)).target == hexed, "an NPC's magpie goes for the best item")
+
+	_check(table.cast_hex(caster, hexed) and not caster.has_item(), "casting a magpie uses up the hex")
+	_check(table.steal_item(caster, hexed) == Item.Kind.HEX and not hexed.has_item(), "the magpie takes the target's item")
+	_check(caster.item == Item.Kind.HEX and caster.hex == Hex.Effect.LIGHTNING, "the caster gets the item, a hex's effect and all")
+	_check(table.can_use_item(caster), "a stolen item can be used straight away, however new it was")
+	_check(table.steal_item(caster, empty) == Item.NONE and caster.hex == Hex.Effect.LIGHTNING, "stealing from empty hands takes nothing")
 	table.free()
 
 

@@ -95,13 +95,25 @@ static func _pick_target(me: PokerPlayer, targets: Array[PokerPlayer]) -> PokerP
 	return best
 
 
+## The items an NPC's magpie most wants to steal, best first.
+const MAGPIE_WANTS: Array[Item.Kind] = [Item.Kind.GUN, Item.Kind.HEX, Item.Kind.SHIELD, Item.Kind.STIMPAK]
+
+
 ## Who to cast [param effect] on, or null if it needs nobody (lightning). Shimmer and leech go on
 ## the biggest stack that doesn't already have one: a shimmer draws everyone's fire and its spread
 ## never hits the caster, so it marks the player the caster most wants shot; a leech takes a share
-## of the victim's chips, so the richer the better.
+## of the victim's chips, so the richer the better. A magpie goes for the best item to steal (see
+## [constant MAGPIE_WANTS]), from the biggest stack on a tie.
 static func _pick_hex_target(effect: Hex.Effect, targets: Array[PokerPlayer]) -> PokerPlayer:
 	if not Hex.needs_target(effect):
 		return null
+	if effect == Hex.Effect.MAGPIE:
+		var wanted: PokerPlayer = null
+		for t in targets:
+			if wanted == null or MAGPIE_WANTS.find(t.item) < MAGPIE_WANTS.find(wanted.item) \
+					or (t.item == wanted.item and t.chips > wanted.chips):
+				wanted = t
+		return wanted
 	var has_it := func(t: PokerPlayer) -> bool:
 		return t.is_shimmering() if effect == Hex.Effect.SHIMMER else t.is_leeched()
 	var best: PokerPlayer = null

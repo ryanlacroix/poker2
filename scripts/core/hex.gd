@@ -13,6 +13,9 @@ enum Effect {
 	## Every other player still in the game has a [constant LIGHTNING_PERCENT]% chance of being
 	## struck, one at a time; a strike lands like the caster's gunshot.
 	LIGHTNING,
+	## The caster picks another player carrying an item; a magpie steals it and brings it to the
+	## caster, who can use it or drop it straight away.
+	MAGPIE,
 }
 
 ## How many hands a leech drains its victim for.
@@ -36,7 +39,7 @@ static func random(rng: RandomNumberGenerator = null) -> Effect:
 ## Whether casting [param effect] needs another player picked.
 static func needs_target(effect: Effect) -> bool:
 	match effect:
-		Effect.SHIMMER, Effect.LEECH: return true
+		Effect.SHIMMER, Effect.LEECH, Effect.MAGPIE: return true
 		Effect.LIGHTNING: return false
 	assert(false, "unknown hex %d" % effect)
 	return false
@@ -48,18 +51,21 @@ static func display_name(effect: Effect) -> String:
 		Effect.SHIMMER: return "SHIMMER"
 		Effect.LEECH: return "LEECH"
 		Effect.LIGHTNING: return "LIGHTNING"
+		Effect.MAGPIE: return "MAGPIE"
 	assert(false, "unknown hex %d" % effect)
 	return ""
 
 
-## Picture of [param effect] (70x37), shown in the cast modal.
+## Picture of [param effect] (70x37), shown in the cast modal; null if it has none yet.
 static func image(effect: Effect) -> Texture2D:
+	var path := ""
 	match effect:
-		Effect.SHIMMER: return load("res://assets/hexes/shimmer.png")
-		Effect.LEECH: return load("res://assets/hexes/leech.png")
-		Effect.LIGHTNING: return load("res://assets/hexes/lightning.png")
-	assert(false, "unknown hex %d" % effect)
-	return null
+		Effect.SHIMMER: path = "res://assets/hexes/shimmer.png"
+		Effect.LEECH: path = "res://assets/hexes/leech.png"
+		Effect.LIGHTNING: path = "res://assets/hexes/lightning.png"
+		Effect.MAGPIE: path = "res://assets/hexes/magpie.png"
+		_: assert(false, "unknown hex %d" % effect)
+	return load(path) if ResourceLoader.exists(path) else null
 
 
 ## What [param effect] does, shown in the cast modal.
@@ -74,5 +80,7 @@ static func description(effect: Effect) -> String:
 		Effect.LIGHTNING:
 			return "Call down a storm. Every other player has a %d%% chance of being struck by lightning, which hits like a bullet." \
 				% LIGHTNING_PERCENT
+		Effect.MAGPIE:
+			return "Pick another player who's carrying an item. A magpie swoops down, steals it and brings it to you, to use or drop straight away."
 	assert(false, "unknown hex %d" % effect)
 	return ""

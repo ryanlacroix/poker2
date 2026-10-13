@@ -7,6 +7,8 @@ extends Control
 signal give_item(item: Item.Kind)
 ## Emitted when a "give" action for a particular hex is picked; the menu closes itself.
 signal give_hex(effect: Hex.Effect)
+## Emitted when GIVE NPCS STIMPAKS is picked; the menu closes itself.
+signal give_npcs_stimpaks
 ## Emitted when GIVE $1000 is picked; the menu closes itself.
 signal give_chips(amount: int)
 ## Emitted when LOSE A HEART is picked; the menu closes itself.
@@ -56,6 +58,9 @@ func _ready() -> void:
 		_add_button(box, "GIVE %s HEX" % Hex.display_name(effect), func() -> void:
 			hide()
 			give_hex.emit(effect))
+	_add_button(box, "GIVE NPCS STIMPAKS", func() -> void:
+		hide()
+		give_npcs_stimpaks.emit())
 	_add_button(box, "GIVE $%d" % GIVE_CHIPS, func() -> void:
 		hide()
 		give_chips.emit(GIVE_CHIPS))

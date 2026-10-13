@@ -147,6 +147,8 @@ func _ready() -> void:
 	_table.showdown_delay = GameConfig.showdown_delay
 	_table.between_hands_delay = GameConfig.between_hands_delay
 	_table.leech_delay = LeechBeam.SECONDS
+	_table.magpie_swoop_delay = MagpieBird.SWOOP_SECONDS
+	_table.magpie_carry_delay = MagpieBird.CARRY_SECONDS
 	_table.wait_for_next_hand = true
 	add_child(_table)
 	_table.setup(GameConfig.create_players())
@@ -418,6 +420,7 @@ func _build_ui() -> void:
 	UiTheme.add_at(self, _debug_menu, Vector2.ZERO, viewport_size)
 	_debug_menu.give_item.connect(_debug_give_item)
 	_debug_menu.give_hex.connect(_debug_give_hex)
+	_debug_menu.give_npcs_stimpaks.connect(_debug_give_npcs_stimpaks)
 	_debug_menu.give_chips.connect(_debug_give_chips)
 	_debug_menu.lose_heart.connect(_debug_lose_heart)
 	_debug_menu.win_table.connect(func() -> void: _show_game_over(_table.players[0]))
@@ -697,6 +700,8 @@ func _connect_table() -> void:
 		_seats[player.seat].refresh())
 	_table.leech_drained.connect(_on_leech_drained)
 	_table.lightning_struck.connect(_on_lightning_struck)
+	_table.magpie_swooped.connect(_on_magpie_swooped)
+	_table.item_stolen.connect(_on_item_stolen)
 	_table.leech_ended.connect(func(player: PokerPlayer) -> void:
 		_seats[player.seat].refresh())
 	_table.item_dropped.connect(func(player: PokerPlayer, item: Item.Kind) -> void:
@@ -800,6 +805,17 @@ func _debug_give_hex(effect: Hex.Effect) -> void:
 		_table.players[0].hex = effect
 
 
+## Debug: hands every NPC still in the game a stimpak, replacing whatever they carry. Like
+## [method _debug_give_item], each counts as picked up a hand ago, so it's ready to use.
+func _debug_give_npcs_stimpaks() -> void:
+	for p in _table.players:
+		if p.is_human() or not PokerTable.in_game(p):
+			continue
+		_table.give_item(p, Item.Kind.STIMPAK)
+		p.item_gained_on_hand = _table.hand_number - 1
+		_seats[p.seat].refresh()
+
+
 ## Debug: adds [param amount] to the human's stack.
 func _debug_give_chips(amount: int) -> void:
 	_table.players[0].chips += amount
@@ -853,12 +869,13 @@ func _show_hex_modal(effect: Hex.Effect) -> void:
 	title.add_theme_font_size_override("font_size", 32)
 	title.add_theme_color_override("font_color", PixelArt.HEART_RED)
 	box.add_child(title)
-	var picture := TextureRect.new()
-	picture.texture = Hex.image(effect)
-	picture.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	picture.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	picture.custom_minimum_size = picture.texture.get_size() * HEX_MODAL_IMAGE_SCALE
-	box.add_child(picture)
+	if Hex.image(effect):
+		var picture := TextureRect.new()
+		picture.texture = Hex.image(effect)
+		picture.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		picture.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		picture.custom_minimum_size = picture.texture.get_size() * HEX_MODAL_IMAGE_SCALE
+		box.add_child(picture)
 	var detail := Label.new()
 	detail.text = Hex.description(effect)
 	detail.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -957,6 +974,34 @@ func _on_lightning_struck(_caster: PokerPlayer, target_player: PokerPlayer, resu
 	UiTheme.add_at(self, bolt, Vector2.ZERO, get_viewport_rect().size)
 	_show_hit(target, result)
 	_shake_screen()
+
+
+## A magpie swoops down on [param target_player]'s item, to carry it to [param caster]. It's
+## taken from the target's seat as the bird grabs it ([method _on_item_stolen]), and shows up on
+## the caster's as the bird lets go.
+func _on_magpie_swooped(caster: PokerPlayer, target_player: PokerPlayer) -> void:
+	var item := target_player.item as Item.Kind
+	var bird := MagpieBird.new()
+	bird.item = item
+	bird.grab_at = _seats[target_player.seat].item_center(item)
+	bird.drop_at = _seats[caster.seat].item_center(item)
+	# Over everything on the table, like a lightning bolt.
+	bird.z_index = LIGHTNING_Z
+	var caster_seat := _seats[caster.seat]
+	bird.delivered.connect(func() -> void:
+		caster_seat.item_hidden = false
+		caster_seat.refresh())
+	add_child(bird) # it places itself
+
+
+## The magpie snatched [param item] from [param target]: gone from their seat, and kept off the
+## caster's until the bird drops it there.
+func _on_item_stolen(caster: PokerPlayer, target: PokerPlayer, item: Item.Kind) -> void:
+	_seats[target.seat].set_status("LOST %s" % Item.display_name(item), PixelArt.HEART_RED)
+	_seats[target.seat].refresh()
+	_seats[caster.seat].item_hidden = true
+	_seats[caster.seat].set_status("STOLE %s" % Item.display_name(item), PixelArt.GOLD)
+	_seats[caster.seat].refresh()
 
 
 ## A leech took its share: a gold beam drifts from the victim to the caster as the chips move over.

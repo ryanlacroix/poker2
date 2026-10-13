@@ -70,6 +70,11 @@ var _flash_color := PixelArt.HEART_RED
 var _hex_glow_at := -1.0
 var _hex_glow_seconds := 0.0
 var _hex_glow_one_sided := false # the caster's glow: only on the side facing the table
+## Leaves the carried item off the portrait, while a magpie is still bringing it over.
+var item_hidden := false:
+	set(value):
+		item_hidden = value
+		_portrait_layer.queue_redraw()
 
 # Scrolled through to make the caster's hex fire lick and flicker.
 static var _fire_noise: FastNoiseLite
@@ -438,37 +443,40 @@ static func _draw_portrait_frame(c: CanvasItem, frame: Rect2, dimmed: bool) -> v
 
 
 ## The carried item, as a small icon on a dark plate in the portrait's bottom corner
-## nearest the cards.
+## nearest the cards. Not drawn while [member item_hidden].
 func _draw_item(c: CanvasItem, frame: Rect2) -> void:
-	if not player.has_item():
+	if not player.has_item() or item_hidden:
 		return
-	var icon: Array[String]
-	var colors: Dictionary
-	match player.item:
-		Item.Kind.GUN:
-			icon = PixelArt.GUN_ICON
-			colors = PixelArt.GUN_COLORS
-		Item.Kind.SHIELD:
-			icon = PixelArt.SHIELD_ICON
-			colors = PixelArt.SHIELD_COLORS
-		Item.Kind.STIMPAK:
-			icon = PixelArt.STIMPAK_ICON
-			colors = PixelArt.STIMPAK_COLORS
-		Item.Kind.HEX:
-			icon = PixelArt.HEX_ICON
-			colors = PixelArt.HEX_COLORS
-		_:
-			assert(false, "unknown item %d" % player.item)
-			return
-	var icon_size := Vector2(icon[0].length(), icon.size())
-	var plate_size := icon_size + Vector2(4, 4)
-	var plate := Rect2(
-		Vector2(frame.position.x if style == Style.COMPACT_RIGHT else frame.end.x - plate_size.x,
-			frame.end.y - plate_size.y), plate_size)
+	var art := item_art(player.item as Item.Kind)
+	var plate := _item_plate(frame, art[0])
 	c.draw_rect(plate.grow(1), InterfaceStyle.current.trim_dark)
 	c.draw_rect(plate, PixelArt.INK)
 	c.draw_rect(plate.grow(-1), InterfaceStyle.current.button_normal)
-	PixelArt.draw_colored(c, icon, colors, plate.position + Vector2(2, 2), 1)
+	PixelArt.draw_colored(c, art[0], art[1], plate.position + Vector2(2, 2), 1)
+
+
+## Where the plate for [param icon] sits on the portrait [param frame].
+func _item_plate(frame: Rect2, icon: Array[String]) -> Rect2:
+	var plate_size := Vector2(icon[0].length(), icon.size()) + Vector2(4, 4)
+	return Rect2(
+		Vector2(frame.position.x if style == Style.COMPACT_RIGHT else frame.end.x - plate_size.x,
+			frame.end.y - plate_size.y), plate_size)
+
+
+## Centre of the plate [param item] is shown on, in the parent's coordinates.
+func item_center(item: Item.Kind) -> Vector2:
+	return position + _item_plate(_portrait_frame(), item_art(item)[0]).get_center()
+
+
+## The icon for [param item] (drawn at 1x): [pattern, colours] for [method PixelArt.draw_colored].
+static func item_art(item: Item.Kind) -> Array:
+	match item:
+		Item.Kind.GUN: return [PixelArt.GUN_ICON, PixelArt.GUN_COLORS]
+		Item.Kind.SHIELD: return [PixelArt.SHIELD_ICON, PixelArt.SHIELD_COLORS]
+		Item.Kind.STIMPAK: return [PixelArt.STIMPAK_ICON, PixelArt.STIMPAK_COLORS]
+		Item.Kind.HEX: return [PixelArt.HEX_ICON, PixelArt.HEX_COLORS]
+	assert(false, "unknown item %d" % item)
+	return [[], {}]
 
 
 ## A black X across the portrait of a player shot out of the game, drawn in blocks on the

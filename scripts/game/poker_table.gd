@@ -39,6 +39,12 @@ signal leech_drained(caster: PokerPlayer, victim: PokerPlayer, amount: int)
 signal leech_ended(victim: PokerPlayer)
 ## Lightning [param caster] called down struck [param target].
 signal lightning_struck(caster: PokerPlayer, target: PokerPlayer, result: Item.ShotResult)
+## The magpie [param caster] sent is swooping down on [param target]'s item; it's taken
+## [member magpie_swoop_delay] later, with [signal item_stolen].
+signal magpie_swooped(caster: PokerPlayer, target: PokerPlayer)
+## The magpie took [param item] from [param target] for [param caster]; it's carried over for
+## [member magpie_carry_delay], then [param caster] gets another item turn.
+signal item_stolen(caster: PokerPlayer, target: PokerPlayer, item: Item.Kind)
 signal item_dropped(player: PokerPlayer, item: Item.Kind)
 signal item_phase_finished
 ## Emitted between hands when [member wait_for_next_hand] is on; call [method continue_to_next_hand].
@@ -64,6 +70,11 @@ var spread_delay := 0.35
 var leech_delay := 0.9
 ## Pause before each lightning strike, so they land one by one.
 var lightning_delay := 1.0
+## Pause after a magpie is cast, while the cast plays out, before the bird swoops.
+var magpie_delay := 1.0
+## How long the magpie takes to swoop down to its target's item, then to carry it to the caster.
+var magpie_swoop_delay := 0.45
+var magpie_carry_delay := 0.6
 ## 0 = unlimited.
 var max_hands := 0
 ## Pause after each hand for the view: before the item phase (until [method begin_item_phase])
@@ -231,6 +242,21 @@ func strike_lightning(caster: PokerPlayer, target: PokerPlayer) -> Item.ShotResu
 	return _hit(target, caster)
 
 
+## The magpie [param thief] cast takes [param victim]'s item (and a hex's secret effect with it)
+## and gives it to [param thief], ready to use straight away. Returns the item, or
+## [constant Item.NONE] if [param victim] has nothing.
+func steal_item(thief: PokerPlayer, victim: PokerPlayer) -> int:
+	var item := victim.item
+	if item == Item.NONE:
+		return item
+	thief.item = item
+	thief.hex = victim.hex
+	thief.item_gained_on_hand = hand_number - 1 # as if held since an earlier hand
+	victim.item = Item.NONE
+	chips_changed.emit()
+	return item
+
+
 ## Still playing: has chips and hearts left.
 static func in_game(p: PokerPlayer) -> bool:
 	return p.chips > 0 and p.hearts > 0
@@ -257,9 +283,13 @@ func drain_leech(victim: PokerPlayer) -> int:
 	return amount
 
 
-## Everyone [param caster] could cast their hex on.
+## Everyone [param caster] could cast their hex on: anyone else still in the game, but for a
+## magpie only those carrying an item.
 func hex_targets(caster: PokerPlayer) -> Array[PokerPlayer]:
-	return gun_targets(caster)
+	var targets := gun_targets(caster)
+	if caster.hex == Hex.Effect.MAGPIE:
+		return targets.filter(func(t: PokerPlayer) -> bool: return t.has_item())
+	return targets
 
 
 ## Whether [param p] may use their item now (between hands): it has a use, they've held it
@@ -530,23 +560,28 @@ func _item_phase_turns() -> void:
 		var p := players[(dealer_index + step) % n]
 		if not p.has_item() or not in_game(p) or p.folded:
 			continue
-		var item := p.item as Item.Kind
-		var can_use := can_use_item(p)
-
-		var decision: ItemDecision
-		if p.is_human():
-			_human_item_decision = Completion.new()
-			item_turn_started.emit(p, can_use)
-			decision = await _human_item_decision.wait()
-			_human_item_decision = null
-		else:
-			decision = p.brain.decide_item(p, can_use, gun_targets(p) if item == Item.Kind.GUN else hex_targets(p))
-			if decision.action == Item.Action.KEEP:
-				continue
-			item_turn_started.emit(p, can_use)
-			await _wait(npc_think_time)
-		await _apply_item_decision(p, item, can_use, decision)
+		await _item_turn(p)
 	item_phase_finished.emit()
+
+
+## [param p]'s turn to use, drop or keep their item.
+func _item_turn(p: PokerPlayer) -> void:
+	var item := p.item as Item.Kind
+	var can_use := can_use_item(p)
+
+	var decision: ItemDecision
+	if p.is_human():
+		_human_item_decision = Completion.new()
+		item_turn_started.emit(p, can_use)
+		decision = await _human_item_decision.wait()
+		_human_item_decision = null
+	else:
+		decision = p.brain.decide_item(p, can_use, gun_targets(p) if item == Item.Kind.GUN else hex_targets(p))
+		if decision.action == Item.Action.KEEP:
+			return
+		item_turn_started.emit(p, can_use)
+		await _wait(npc_think_time)
+	await _apply_item_decision(p, item, can_use, decision)
 
 
 ## Start of the item phase: each leech takes its share from its victim. A leech whose victim or
@@ -588,6 +623,9 @@ func _apply_item_decision(p: PokerPlayer, item: Item.Kind, can_use: bool, decisi
 				var effect := p.hex
 				if cast_hex(p, target):
 					hex_cast.emit(p, effect, target if Hex.needs_target(effect) else null)
+					if effect == Hex.Effect.MAGPIE:
+						await _send_magpie(p, target)
+						return
 					if effect == Hex.Effect.LIGHTNING:
 						for struck in roll_lightning(p):
 							await _wait(lightning_delay)
@@ -596,6 +634,20 @@ func _apply_item_decision(p: PokerPlayer, item: Item.Kind, can_use: bool, decisi
 		Item.Action.DROP:
 			p.item = Item.NONE
 			item_dropped.emit(p, item)
+
+
+## After the cast, [param caster]'s magpie swoops on [param target]'s item and carries it back;
+## then [param caster] gets another item turn, to use or drop it.
+func _send_magpie(caster: PokerPlayer, target: PokerPlayer) -> void:
+	await _wait(magpie_delay)
+	magpie_swooped.emit(caster, target)
+	await _wait(magpie_swoop_delay)
+	var item := steal_item(caster, target)
+	if item == Item.NONE:
+		return
+	item_stolen.emit(caster, target, item)
+	await _wait(magpie_carry_delay)
+	await _item_turn(caster)
 
 
 ## End of hand: each player still in the game with free hands may pick up a random item.
