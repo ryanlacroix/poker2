@@ -16,36 +16,46 @@ const CARRY_ARC := 40.0
 const FLAP_SECONDS := 0.06
 const PX := 2
 
-# Facing right; flipped to fly left. Its feet (the F cells) carry the item.
+# Facing right; flipped to fly left: a long blue-sheened tail, white belly and shoulder, and
+# white-tipped wings. Its feet (the F cells) carry the item.
 const WINGS_UP: Array[String] = [
-	"......KK......",
-	"......KWK.....",
-	".......KWK....",
-	".......KBK.KK.",
-	"BBKK..KKKKKKKY",
-	"..KKKKKWWWKK..",
-	".......WWW....",
-	".......F.F....",
+	"......WW............",
+	"......KWW...........",
+	".......KWW..........",
+	"........KBB.........",
+	".........KBB....KK..",
+	".........KBBK..KKEKY",
+	"...BBKKKKWWWKKKKKKK.",
+	"BBBKK...KKWWWWKKK...",
+	".........KWWWWWK....",
+	"..........KWWWK.....",
+	"...........K.K......",
+	"...........F.F......",
 ]
 const WINGS_DOWN: Array[String] = [
-	"..............",
-	"..............",
-	"..............",
-	"...........KK.",
-	"BBKK..KKKKKKKY",
-	"..KKKKKBWWKK..",
-	"......KBWW....",
-	".....KWKF.F...",
+	"....................",
+	"....................",
+	"....................",
+	"....................",
+	"................KK..",
+	"...............KKEKY",
+	"...BBKKKKWWWKKKKKKK.",
+	"BBBKK...KBBKWWKKK...",
+	"........KBBKWWWWK...",
+	".......KWWK.WWK.....",
+	"......WWK..K.K......",
+	"...........F.F......",
 ]
 const COLORS := {
 	"K": Color("16161e"),
 	"W": Color("f4f4f4"),
 	"B": Color("3a5cc0"),
+	"E": Color("8a8a99"),
 	"Y": Color("4a4a55"),
 	"F": Color("6a6a72"),
 }
 ## Column the feet are centred on, facing right.
-const FEET_X := 8.5
+const FEET_X := 12.5
 
 ## Where the item is snatched from, and dropped on (the parent's coordinates): the centres of
 ## the target's and the caster's item plates.
