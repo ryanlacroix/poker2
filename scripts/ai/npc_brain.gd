@@ -61,23 +61,37 @@ func _raise(ctx: DecisionContext, equity: float) -> Decision:
 	return Decision.new(Poker.Action.RAISE, target)
 
 
-## Item phase: fire a ready gun (more likely the more aggressive), and timid players who
-## won't fire it drop it to try for a shield instead. A shield is always worth keeping, and a
-## stimpak is saved until it would win back a heart. A ready hex is cast about as readily as a
-## gun is fired, without knowing what it does (it may fizzle). [param targets] are who the gun or
-## hex could be used on; for a hex they only matter once it's being cast.
-func decide_item(me: PokerPlayer, can_use: bool, targets: Array[PokerPlayer]) -> ItemDecision:
-	if me.item == Item.Kind.STIMPAK:
-		return ItemDecision.new(Item.Action.USE if can_use and me.is_hurt() else Item.Action.KEEP)
-	if me.item == Item.Kind.HEX:
-		if not can_use or randf() >= 0.5 + 0.5 * aggression:
-			return ItemDecision.new(Item.Action.KEEP)
-		return ItemDecision.new(Item.Action.USE, _pick_hex_target(me.hex, targets))
-	if me.item != Item.Kind.GUN or not can_use or targets.is_empty():
-		return ItemDecision.new(Item.Action.KEEP)
-	if randf() < 0.5 + 0.5 * aggression:
-		return ItemDecision.new(Item.Action.USE, _pick_target(me, targets))
-	return ItemDecision.new(Item.Action.DROP if aggression < 0.3 else Item.Action.KEEP)
+## Item phase: one of [param offered] to use, or one to drop (the turn then carries on), or keep
+## them all. A ready gun is fired (more likely the more aggressive), and timid players who won't
+## fire it drop it to try for a shield instead. A shield is always worth keeping, and a stimpak is
+## saved until it would win back a heart. A ready hex is cast about as readily as a gun is fired,
+## without knowing what it does (it may fizzle). Items are weighed in the order they're held, and
+## the first one used wins. [param usable] are those of [param offered] that can be used now;
+## [param gun_targets] who could be shot, and [param hex_targets] gives who a hex with a given
+## effect could be cast on (only looked at once it's being cast).
+func decide_item(me: PokerPlayer, offered: Array[HeldItem], usable: Array[HeldItem],
+		gun_targets: Array[PokerPlayer], hex_targets: Callable) -> ItemDecision:
+	var drop: ItemDecision = null
+	for held in offered:
+		if held not in usable:
+			continue
+		match held.kind:
+			Item.Kind.STIMPAK:
+				if me.is_hurt():
+					return ItemDecision.new(Item.Action.USE, held)
+			Item.Kind.HEX:
+				if randf() < 0.5 + 0.5 * aggression:
+					var target := _pick_hex_target(held.hex, hex_targets.call(held.hex))
+					var steal := _best_to_steal(target) if held.hex == Hex.Effect.MAGPIE and target else null
+					return ItemDecision.new(Item.Action.USE, held, target, steal)
+			Item.Kind.GUN:
+				if gun_targets.is_empty():
+					continue
+				if randf() < 0.5 + 0.5 * aggression:
+					return ItemDecision.new(Item.Action.USE, held, _pick_target(me, gun_targets))
+				if aggression < 0.3 and drop == null:
+					drop = ItemDecision.new(Item.Action.DROP, held)
+	return drop if drop else ItemDecision.new(Item.Action.KEEP)
 
 
 ## The most rewarding shot: finishing someone off takes their whole stack, so favour big stacks
@@ -87,7 +101,7 @@ static func _pick_target(me: PokerPlayer, targets: Array[PokerPlayer]) -> PokerP
 	var best: PokerPlayer = null
 	var best_value := -INF
 	for t in targets:
-		var value := float(t.chips) / t.hearts * (0.25 if t.item == Item.Kind.SHIELD else 1.0) * randf_range(0.8, 1.2)
+		var value := float(t.chips) / t.hearts * (0.25 if t.has(Item.Kind.SHIELD) else 1.0) * randf_range(0.8, 1.2)
 		if t.is_shimmering():
 			value *= 2.0
 		if value > best_value:
@@ -106,15 +120,16 @@ const MAGPIE_WANTS: Array[Item.Kind] = [Item.Kind.GUN, Item.Kind.HEX, Item.Kind.
 ## wants shot; a leech takes a share of the victim's chips, and a blown-up or overloaded victim's
 ## chips go to the caster, so the richer the better (a shield overload can only pick from those
 ## carrying a shield). A magpie goes for the best item to steal (see [constant MAGPIE_WANTS]), from
-## the biggest stack on a tie.
+## the biggest stack on a tie; see [method _best_to_steal] for which of their items.
 static func _pick_hex_target(effect: Hex.Effect, targets: Array[PokerPlayer]) -> PokerPlayer:
 	if not Hex.needs_target(effect):
 		return null
 	if effect == Hex.Effect.MAGPIE:
 		var wanted: PokerPlayer = null
 		for t in targets:
-			if wanted == null or MAGPIE_WANTS.find(t.item) < MAGPIE_WANTS.find(wanted.item) \
-					or (t.item == wanted.item and t.chips > wanted.chips):
+			var best := MAGPIE_WANTS.find(_best_to_steal(t).kind)
+			if wanted == null or best < MAGPIE_WANTS.find(_best_to_steal(wanted).kind) \
+					or (best == MAGPIE_WANTS.find(_best_to_steal(wanted).kind) and t.chips > wanted.chips):
 				wanted = t
 		return wanted
 	var has_it := func(t: PokerPlayer) -> bool:
@@ -128,6 +143,15 @@ static func _pick_hex_target(effect: Hex.Effect, targets: Array[PokerPlayer]) ->
 		if best == null or (has_it.call(best) and not has_it.call(t)) \
 				or (has_it.call(best) == has_it.call(t) and t.chips > best.chips):
 			best = t
+	return best
+
+
+## The item of [param target]'s a magpie most wants (see [constant MAGPIE_WANTS]).
+static func _best_to_steal(target: PokerPlayer) -> HeldItem:
+	var best: HeldItem = null
+	for held in target.items:
+		if best == null or MAGPIE_WANTS.find(held.kind) < MAGPIE_WANTS.find(best.kind):
+			best = held
 	return best
 
 

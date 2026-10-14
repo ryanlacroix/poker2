@@ -29,6 +29,7 @@ func _test_evaluator() -> void:
 	_test_stimpak_phase()
 	_test_items()
 	_test_item_phase()
+	_test_item_turn()
 	_test_item_odds()
 	_test_shimmer()
 	_test_shimmer_phase()
@@ -47,14 +48,39 @@ func _test_evaluator() -> void:
 func _test_shield() -> void:
 	var table := PokerTable.new()
 	var you := PokerPlayer.new("YOU", 1000)
-	you.item = Item.Kind.GUN
+	_hold(you, Item.Kind.GUN)
 	var npc := PokerPlayer.new("NPC", 400, NpcBrain.new())
-	npc.item = Item.Kind.SHIELD
+	_hold(npc, Item.Kind.SHIELD)
 	table.setup([you, npc])
 	_check(table.shoot(you, npc) == Item.ShotResult.SHIELD_BROKE and npc.hearts == 3 and not npc.has_item(), "a shield breaks instead of losing a heart")
 	_check(not you.has_item(), "shooting uses up the gun")
 	_check(table.shoot(you, npc) == Item.ShotResult.HIT and npc.hearts == 2, "once broken, the next shot takes a heart")
+
+	# A shield works in either hand, and a shot breaks just one.
+	var stimpak := _hold(npc, Item.Kind.STIMPAK)
+	_hold(npc, Item.Kind.SHIELD)
+	_check(table.shoot(you, npc) == Item.ShotResult.SHIELD_BROKE and npc.hearts == 2 and npc.items == [stimpak], "a shield in the second hand works too")
+	npc.items.clear()
+	_hold(npc, Item.Kind.SHIELD)
+	_hold(npc, Item.Kind.SHIELD)
+	_check(table.shoot(you, npc) == Item.ShotResult.SHIELD_BROKE and npc.items.size() == 1, "a shot breaks only one of two shields")
 	table.free()
+
+
+## Puts a [param kind] (with [param effect], if it's a hex) in [param p]'s hands, picked up at the
+## end of hand [param on_hand]. Returns it.
+func _hold(p: PokerPlayer, kind: Item.Kind, effect := Hex.Effect.SHIMMER, on_hand := -1) -> HeldItem:
+	var held := HeldItem.new(kind, on_hand, effect)
+	p.items.append(held)
+	return held
+
+
+## What [param brain] does on [param me]'s item turn, asked the way [param table] asks it.
+static func _decide(brain: NpcBrain, table: PokerTable, me: PokerPlayer) -> ItemDecision:
+	var usable: Array[HeldItem] = []
+	usable.assign(me.items.filter(func(held: HeldItem) -> bool: return table.can_use_item(me, held)))
+	return brain.decide_item(me, me.items, usable, table.gun_targets(me),
+		func(effect: Hex.Effect) -> Array[PokerPlayer]: return table.hex_targets(me, effect))
 
 
 func _test_remove_heart() -> void:
@@ -134,17 +160,15 @@ func _test_shimmer() -> void:
 	var table := PokerTable.new()
 	table.setup([caster, target, shooter, a, b])
 	table.hand_number = 4
-	caster.item = Item.Kind.HEX
-	caster.hex = Hex.Effect.SHIMMER
-	caster.item_gained_on_hand = 3
-	_check(table.can_use_item(caster), "a hex can be used at the end of the next hand")
-	_check(not table.cast_hex(caster, caster) and caster.has_item(), "a shimmer can't be cast on yourself")
-	_check(table.cast_hex(caster, target) and not caster.has_item(), "casting a hex uses it up")
+	var hex := _hold(caster, Item.Kind.HEX, Hex.Effect.SHIMMER, 3)
+	_check(table.can_use_item(caster, hex), "a hex can be used at the end of the next hand")
+	_check(not table.cast_hex(caster, hex, caster) and caster.has_item(), "a shimmer can't be cast on yourself")
+	_check(table.cast_hex(caster, hex, target) and not caster.has_item(), "casting a hex uses it up")
 	_check(target.shimmered_by == caster, "the shimmer lands on the target")
 
 	# Only A and B can be caught by the spread, so both are, and nobody else.
-	shooter.item = Item.Kind.GUN
-	a.item = Item.Kind.SHIELD
+	_hold(shooter, Item.Kind.GUN)
+	_hold(a, Item.Kind.SHIELD)
 	_check(table.shoot(shooter, target) == Item.ShotResult.HIT and target.hearts == 2, "the shimmering player takes the shot")
 	var hits := table.spread_shimmer(shooter, target)
 	_check(hits.size() == 2 and a in hits and b in hits, "the shot spreads to others, never the caster or the shooter")
@@ -174,11 +198,12 @@ func _test_shimmer() -> void:
 	# NPCs cast a ready shimmer (an aggressive one, every time) on the biggest stack.
 	var bold := NpcBrain.new()
 	bold.aggression = 1
-	caster.item = Item.Kind.HEX
+	hex = _hold(caster, Item.Kind.HEX, Hex.Effect.SHIMMER, 3)
 	crowd[3].chips = 5000
-	var decision := bold.decide_item(caster, true, table.hex_targets(caster))
-	_check(decision.action == Item.Action.USE and decision.target == crowd[3], "an NPC casts a shimmer on the biggest stack")
-	_check(bold.decide_item(caster, false, table.hex_targets(caster)).action == Item.Action.KEEP, "an NPC can't cast a hex before it's ready")
+	var decision := _decide(bold, table, caster)
+	_check(decision.action == Item.Action.USE and decision.item == hex and decision.target == crowd[3], "an NPC casts a shimmer on the biggest stack")
+	hex.gained_on_hand = table.hand_number
+	_check(_decide(bold, table, caster).action == Item.Action.KEEP, "an NPC can't cast a hex before it's ready")
 	table.free()
 
 
@@ -195,8 +220,7 @@ func _test_shimmer_phase() -> void:
 		PokerPlayer.new("A", 100_000, gunman), PokerPlayer.new("B", 100_000, brain),
 		PokerPlayer.new("C", 100_000, brain), PokerPlayer.new("D", 100_000, brain),
 	]
-	players[0].item = Item.Kind.GUN
-	players[0].item_gained_on_hand = -1
+	_hold(players[0], Item.Kind.GUN)
 	players[1].shimmered_by = players[2]
 	# Lambdas capture locals by value, so the results they record go in here.
 	# Anyone can bust in a hand of poker, so the checks only count if all four reached the item phase.
@@ -229,10 +253,9 @@ func _test_leech() -> void:
 	var rich := PokerPlayer.new("RICH", 5000, brain)
 	var table := PokerTable.new()
 	table.setup([caster, victim, rich])
-	caster.item = Item.Kind.HEX
-	caster.hex = Hex.Effect.LEECH
-	_check(not table.cast_hex(caster, caster) and caster.has_item(), "a leech can't be cast on yourself")
-	_check(table.cast_hex(caster, victim) and not caster.has_item(), "casting a leech uses up the hex")
+	var hex := _hold(caster, Item.Kind.HEX, Hex.Effect.LEECH)
+	_check(not table.cast_hex(caster, hex, caster) and caster.has_item(), "a leech can't be cast on yourself")
+	_check(table.cast_hex(caster, hex, victim) and not caster.has_item(), "casting a leech uses up the hex")
 	_check(victim.leeched_by == caster and victim.leech_drains_left == Hex.LEECH_HANDS, "the leech lands on the victim")
 	_check(table.drain_leech(victim) == 100 and victim.chips == 900 and caster.chips == 1100, "a leech takes 10% of the victim's chips")
 	_check(table.drain_leech(victim) == 90 and victim.is_leeched(), "each drain takes 10% of what's left")
@@ -242,11 +265,11 @@ func _test_leech() -> void:
 	# NPCs leech the richest player not already leeched.
 	var bold := NpcBrain.new()
 	bold.aggression = 1
-	caster.item = Item.Kind.HEX
-	var decision := bold.decide_item(caster, true, table.hex_targets(caster))
+	_hold(caster, Item.Kind.HEX, Hex.Effect.LEECH)
+	var decision := _decide(bold, table, caster)
 	_check(decision.action == Item.Action.USE and decision.target == rich, "an NPC leeches the biggest stack")
 	rich.leeched_by = victim
-	_check(bold.decide_item(caster, true, table.hex_targets(caster)).target == victim, "an NPC doesn't leech someone already leeched")
+	_check(_decide(bold, table, caster).target == victim, "an NPC doesn't leech someone already leeched")
 
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 1
@@ -266,15 +289,14 @@ func _test_lightning() -> void:
 		players.append(PokerPlayer.new("P%d" % i, 1000, brain))
 	var table := PokerTable.new()
 	table.setup(players)
-	caster.item = Item.Kind.HEX
-	caster.hex = Hex.Effect.LIGHTNING
-	_check(table.cast_hex(caster, null) and not caster.has_item(), "lightning is cast with no target, using up the hex")
+	var hex := _hold(caster, Item.Kind.HEX, Hex.Effect.LIGHTNING)
+	_check(table.cast_hex(caster, hex, null) and not caster.has_item(), "lightning is cast with no target, using up the hex")
 	var struck := table.roll_lightning(caster)
 	_check(caster not in struck and broke not in struck, "lightning never strikes the caster or anyone out of the game")
 	_check(absi(struck.size() - 200) < 50, "lightning strikes about half the others (%d of 400)" % struck.size())
 
 	var target := players[2]
-	target.item = Item.Kind.SHIELD
+	_hold(target, Item.Kind.SHIELD)
 	_check(table.strike_lightning(caster, target) == Item.ShotResult.SHIELD_BROKE and target.hearts == 3, "a shield takes a lightning strike")
 	_check(table.strike_lightning(caster, target) == Item.ShotResult.HIT and target.hearts == 2, "a strike takes a heart")
 	target.hearts = 1
@@ -292,27 +314,27 @@ func _test_magpie() -> void:
 	var table := PokerTable.new()
 	table.setup([caster, empty, shielded, hexed])
 	table.hand_number = 5
-	caster.item = Item.Kind.HEX
-	caster.hex = Hex.Effect.MAGPIE
-	_check(table.can_use_item(caster) and table.hex_fizzles(caster), "a magpie can be tried when nobody else has an item, but fizzles")
-	shielded.item = Item.Kind.SHIELD
-	hexed.item = Item.Kind.HEX
-	hexed.hex = Hex.Effect.LIGHTNING
-	hexed.item_gained_on_hand = 5
-	var targets := table.hex_targets(caster)
+	var magpie := _hold(caster, Item.Kind.HEX, Hex.Effect.MAGPIE)
+	_check(table.can_use_item(caster, magpie) and table.hex_fizzles(caster, magpie), "a magpie can be tried when nobody else has an item, but fizzles")
+	var shield := _hold(shielded, Item.Kind.SHIELD)
+	var stimpak := _hold(hexed, Item.Kind.STIMPAK)
+	var loot := _hold(hexed, Item.Kind.HEX, Hex.Effect.LIGHTNING, 5)
+	var targets := table.hex_targets(caster, Hex.Effect.MAGPIE)
 	_check(targets.size() == 2 and shielded in targets and hexed in targets, "a magpie can only pick players carrying an item")
-	_check(not table.cast_hex(caster, empty) and caster.has_item(), "a magpie can't be cast on someone empty-handed")
+	_check(not table.cast_hex(caster, magpie, empty) and caster.has_item(), "a magpie can't be cast on someone empty-handed")
 
-	# NPCs send the magpie after the best item: a hex over a shield, even on a smaller stack.
+	# NPCs send the magpie after the best item: a hex over a shield, even on a smaller stack, and
+	# over the stimpak in the target's other hand.
 	var bold := NpcBrain.new()
 	bold.aggression = 1
-	_check(bold.decide_item(caster, true, table.hex_targets(caster)).target == hexed, "an NPC's magpie goes for the best item")
+	var decision := _decide(bold, table, caster)
+	_check(decision.target == hexed and decision.steal == loot, "an NPC's magpie goes for the best item")
 
-	_check(table.cast_hex(caster, hexed) and not caster.has_item(), "casting a magpie uses up the hex")
-	_check(table.steal_item(caster, hexed) == Item.Kind.HEX and not hexed.has_item(), "the magpie takes the target's item")
-	_check(caster.item == Item.Kind.HEX and caster.hex == Hex.Effect.LIGHTNING, "the caster gets the item, a hex's effect and all")
-	_check(table.can_use_item(caster), "a stolen item can be used straight away, however new it was")
-	_check(table.steal_item(caster, empty) == Item.NONE and caster.hex == Hex.Effect.LIGHTNING, "stealing from empty hands takes nothing")
+	_check(table.cast_hex(caster, magpie, hexed) and not caster.has_item(), "casting a magpie uses up the hex")
+	_check(table.steal_item(caster, hexed, loot) == loot and hexed.items == [stimpak], "the magpie takes just the picked item")
+	_check(caster.items == [loot] and loot.hex == Hex.Effect.LIGHTNING, "the caster gets the item, a hex's effect and all")
+	_check(table.can_use_item(caster, loot), "a stolen item can be used straight away, however new it was")
+	_check(table.steal_item(caster, empty, shield) == null and caster.items == [loot], "stealing what the victim doesn't have takes nothing")
 	table.free()
 
 
@@ -323,21 +345,19 @@ func _test_boom_trap() -> void:
 	var rich := PokerPlayer.new("RICH", 5000, brain)
 	var table := PokerTable.new()
 	table.setup([caster, victim, rich])
-	caster.item = Item.Kind.HEX
-	caster.hex = Hex.Effect.BOOM_TRAP
+	var hex := _hold(caster, Item.Kind.HEX, Hex.Effect.BOOM_TRAP)
 
 	# NPCs strap the bomb to the biggest stack.
 	var bold := NpcBrain.new()
 	bold.aggression = 1
-	_check(bold.decide_item(caster, true, table.hex_targets(caster)).target == rich, "an NPC traps the biggest stack")
+	_check(_decide(bold, table, caster).target == rich, "an NPC traps the biggest stack")
 
-	_check(not table.cast_hex(caster, caster) and caster.has_item(), "a boom trap can't be cast on yourself")
-	_check(table.cast_hex(caster, victim) and not caster.has_item(), "casting a boom trap uses up the hex")
+	_check(not table.cast_hex(caster, hex, caster) and caster.has_item(), "a boom trap can't be cast on yourself")
+	_check(table.cast_hex(caster, hex, victim) and not caster.has_item(), "casting a boom trap uses up the hex")
 	_check(victim.trapped_by == caster, "the bomb is strapped to the victim")
-	caster.item = Item.Kind.HEX
-	_check(victim not in table.hex_targets(caster), "a player can't be trapped twice")
+	_check(victim not in table.hex_targets(caster, Hex.Effect.BOOM_TRAP), "a player can't be trapped twice")
 
-	victim.item = Item.Kind.SHIELD
+	_hold(victim, Item.Kind.SHIELD)
 	_check(table.detonate(victim) == caster and not victim.is_trapped(), "the bomb goes off once")
 	_check(victim.blown_up and victim.hearts == 0 and not PokerTable.in_game(victim), "a shield doesn't stop the bomb")
 	_check(victim.chips == 0 and caster.chips == 1700, "the victim's chips go to whoever trapped them")
@@ -357,35 +377,37 @@ func _test_shield_overload() -> void:
 	var richer := PokerPlayer.new("RICHER", 9000, brain)
 	var table := PokerTable.new()
 	table.setup([caster, victim, rich, richer])
-	caster.item = Item.Kind.HEX
-	caster.hex = Hex.Effect.SHIELD_OVERLOAD
-	caster.item_gained_on_hand = -1
-	_check(table.can_use_item(caster) and table.hex_fizzles(caster), "a shield overload can be tried with no shields about, but fizzles")
-	# An NPC doesn't know it holds a dud: a bold one tries it anyway, and loses it.
+	var stimpak := _hold(caster, Item.Kind.STIMPAK)
+	var dud := _hold(caster, Item.Kind.HEX, Hex.Effect.SHIELD_OVERLOAD)
+	_check(table.can_use_item(caster, dud) and table.hex_fizzles(caster, dud), "a shield overload can be tried with no shields about, but fizzles")
+	# An NPC doesn't know it holds a dud: a bold one tries it anyway, and loses it (from the second
+	# hand, keeping what's in the first).
 	var bold := NpcBrain.new()
 	bold.aggression = 1
-	var tried := bold.decide_item(caster, true, table.hex_targets(caster))
-	_check(tried.action == Item.Action.USE, "an NPC tries a hex without knowing it will fizzle")
+	var tried := _decide(bold, table, caster)
+	_check(tried.action == Item.Action.USE and tried.item == dud, "an NPC tries a hex without knowing it will fizzle")
 	var fizzled := []
-	table.hex_fizzled.connect(func(p: PokerPlayer, effect: Hex.Effect) -> void: fizzled.append([p, effect]))
+	table.hex_fizzled.connect(func(p: PokerPlayer, effect: Hex.Effect, slot: int) -> void: fizzled.append([p, effect, slot]))
 	table.hex_fizzle_delay = 0
 	add_child(table)
-	table._apply_item_decision(caster, Item.Kind.HEX, true, tried)
-	_check(not caster.has_item() and fizzled == [[caster, Hex.Effect.SHIELD_OVERLOAD]], "a hex that fizzles is lost")
+	table._apply_item_use(caster, tried)
+	_check(caster.items == [stimpak] and fizzled == [[caster, Hex.Effect.SHIELD_OVERLOAD, 1]], "a hex that fizzles is lost")
 	remove_child(table)
-	caster.item = Item.Kind.HEX
+	caster.items.clear()
+	var hex := _hold(caster, Item.Kind.HEX, Hex.Effect.SHIELD_OVERLOAD)
 
-	victim.item = Item.Kind.SHIELD
-	rich.item = Item.Kind.SHIELD
-	richer.item = Item.Kind.GUN
-	var targets := table.hex_targets(caster)
-	_check(targets.size() == 2 and victim in targets and rich in targets, "a shield overload can only pick players carrying a shield")
-	_check(not table.hex_fizzles(caster), "a shield overload with shields about doesn't fizzle")
-	_check(bold.decide_item(caster, true, targets).target == rich, "an NPC overloads the biggest stack with a shield")
+	_hold(victim, Item.Kind.SHIELD)
+	_hold(rich, Item.Kind.GUN)
+	_hold(rich, Item.Kind.SHIELD) # in the second hand
+	_hold(richer, Item.Kind.GUN)
+	var targets := table.hex_targets(caster, Hex.Effect.SHIELD_OVERLOAD)
+	_check(targets.size() == 2 and victim in targets and rich in targets, "a shield overload can only pick players carrying a shield, in either hand")
+	_check(not table.hex_fizzles(caster, hex), "a shield overload with shields about doesn't fizzle")
+	_check(_decide(bold, table, caster).target == rich, "an NPC overloads the biggest stack with a shield")
 
-	_check(not table.cast_hex(caster, caster) and caster.has_item(), "a shield overload can't be cast on yourself")
-	_check(not table.cast_hex(caster, richer) and caster.has_item(), "a shield overload can't be cast on someone without a shield")
-	_check(table.cast_hex(caster, victim) and not caster.has_item(), "casting a shield overload uses up the hex")
+	_check(not table.cast_hex(caster, hex, caster) and caster.has_item(), "a shield overload can't be cast on yourself")
+	_check(not table.cast_hex(caster, hex, richer) and caster.has_item(), "a shield overload can't be cast on someone without a shield")
+	_check(table.cast_hex(caster, hex, victim) and not caster.has_item(), "casting a shield overload uses up the hex")
 	table.overload(caster, victim)
 	_check(victim.hearts == 0 and not PokerTable.in_game(victim), "an overload takes every heart")
 	_check(victim.blown_up, "an overloaded player is blown out of the game")
@@ -459,32 +481,40 @@ func _test_stimpak() -> void:
 	_check(Item.can_be_used(Item.Kind.STIMPAK), "a stimpak can be used")
 
 	hurt.hearts = 1
-	hurt.item = Item.Kind.STIMPAK
+	_hold(hurt, Item.Kind.STIMPAK)
+	_hold(hurt, Item.Kind.STIMPAK)
 	_check(table.use_stimpak(hurt) and hurt.hearts == 2, "a stimpak wins back one heart")
-	_check(not hurt.has_item(), "using a stimpak uses it up")
-	hurt.item = Item.Kind.STIMPAK
+	_check(hurt.items.size() == 1, "using a stimpak uses up just the one")
 	_check(table.use_stimpak(hurt) and hurt.hearts == 3 and not hurt.has_item(), "a second stimpak heals back to full")
 
-	healthy.item = Item.Kind.STIMPAK
+	_hold(healthy, Item.Kind.STIMPAK)
 	_check(not table.use_stimpak(healthy) and healthy.hearts == 3, "a stimpak does nothing at full health")
 	_check(not healthy.has_item(), "a stimpak is used up even at full health")
 
 	# Like a gun, it's only ready from the end of the hand after it was picked up.
-	healthy.item = Item.Kind.STIMPAK
-	healthy.item_gained_on_hand = 4
+	var stimpak := _hold(healthy, Item.Kind.STIMPAK, Hex.Effect.SHIMMER, 4)
 	table.hand_number = 4
-	_check(not table.can_use_item(healthy), "a new stimpak can't be used at the end of the hand it was picked up")
+	_check(not table.can_use_item(healthy, stimpak), "a new stimpak can't be used at the end of the hand it was picked up")
 	table.hand_number = 5
-	_check(table.can_use_item(healthy), "a stimpak can be used at the end of the next hand")
+	_check(table.can_use_item(healthy, stimpak), "a stimpak can be used at the end of the next hand")
 
 	# NPCs save a stimpak until they're hurt.
 	var brain := NpcBrain.new()
-	var no_targets: Array[PokerPlayer] = []
 	healthy.hearts = 3
-	_check(brain.decide_item(healthy, true, no_targets).action == Item.Action.KEEP, "an NPC at full health keeps their stimpak")
+	_check(_decide(brain, table, healthy).action == Item.Action.KEEP, "an NPC at full health keeps their stimpak")
 	healthy.hearts = 2
-	_check(brain.decide_item(healthy, true, no_targets).action == Item.Action.USE, "a hurt NPC uses a ready stimpak")
-	_check(brain.decide_item(healthy, false, no_targets).action == Item.Action.KEEP, "an NPC can't use a stimpak before it's ready")
+	var decision := _decide(brain, table, healthy)
+	_check(decision.action == Item.Action.USE and decision.item == stimpak, "a hurt NPC uses a ready stimpak")
+	table.hand_number = 4
+	_check(_decide(brain, table, healthy).action == Item.Action.KEEP, "an NPC can't use a stimpak before it's ready")
+
+	# Shields have no use: an NPC holding one beside a stimpak reaches for the stimpak.
+	healthy.items.clear()
+	table.hand_number = 5
+	_hold(healthy, Item.Kind.SHIELD)
+	stimpak = _hold(healthy, Item.Kind.STIMPAK)
+	decision = _decide(brain, table, healthy)
+	_check(decision.action == Item.Action.USE and decision.item == stimpak, "an NPC uses the stimpak in their second hand")
 	table.free()
 
 
@@ -496,15 +526,14 @@ func _test_stimpak_phase() -> void:
 		PokerPlayer.new("A", 100_000, brain), PokerPlayer.new("B", 1000, brain), PokerPlayer.new("C", 1000, brain),
 	]
 	players[0].hearts = 2
-	players[0].item = Item.Kind.STIMPAK
-	players[0].item_gained_on_hand = -1
+	var stimpak := _hold(players[0], Item.Kind.STIMPAK)
 	var seen := {"healed": null, "folded": null}
 	_play_hands(2, 0, players, func(_table: PokerTable) -> void:
 		if seen.folded == false:
 			_check(seen.healed == true and players[0].hearts == 3, "a hurt NPC heals with their stimpak in the item phase")
 			_check(not players[0].has_item(), "the NPC's stimpak is used up")
 		elif seen.folded == true:
-			_check(seen.healed == null and players[0].item == Item.Kind.STIMPAK, "a player who folded doesn't use their stimpak"),
+			_check(seen.healed == null and players[0].items == [stimpak], "a player who folded doesn't use their stimpak"),
 		func(table: PokerTable) -> void:
 			table.stimpak_used.connect(func(_p: PokerPlayer, healed: bool) -> void: seen.healed = healed)
 			table.item_phase_finished.connect(func() -> void:
@@ -523,20 +552,21 @@ func _test_item_phase() -> void:
 	var players: Array[PokerPlayer] = [
 		PokerPlayer.new("A", 100_000, gunman), PokerPlayer.new("B", 1000, brain), PokerPlayer.new("C", 1000, brain),
 	]
-	players[0].item = Item.Kind.GUN
-	players[0].item_gained_on_hand = -1
+	# Two guns: only one can be fired in a turn.
+	var guns: Array[HeldItem] = [_hold(players[0], Item.Kind.GUN), _hold(players[0], Item.Kind.GUN)]
 	# Lambdas capture locals by value, so the results they record go in here.
 	# gunman_folded is as of the (only) item phase, after hand 1.
-	var seen := {"shooter": null, "victim": null, "gunman_folded": null}
+	var seen := {"shooter": null, "victim": null, "shots": 0, "gunman_folded": null}
 	_play_hands(2, 0, players, func(_table: PokerTable) -> void:
 		if seen.gunman_folded == false:
 			_check(seen.shooter == players[0] and seen.victim != null and seen.victim != players[0], "an aggressive NPC fires a ready gun at someone else")
-			_check(not players[0].has_item(), "firing uses up the NPC's gun")
+			_check(seen.shots == 1 and players[0].items.size() == 1, "only one of two guns is fired in a turn")
 			_check(players[1].hearts + players[2].hearts == 5, "the shot takes exactly one heart")
 		elif seen.gunman_folded == true:
-			_check(seen.shooter == null and players[0].item == Item.Kind.GUN, "a player who folded gets no item turn"),
+			_check(seen.shooter == null and players[0].items == guns, "a player who folded gets no item turn"),
 		func(table: PokerTable) -> void:
 			table.shot.connect(func(s: PokerPlayer, t: PokerPlayer, _result: Item.ShotResult) -> void:
+				seen.shots += 1
 				seen.shooter = s
 				seen.victim = t)
 			table.item_phase_finished.connect(func() -> void:
@@ -557,15 +587,80 @@ func _test_items() -> void:
 		_check(not always[2].has_item(), "busted players get no item")
 		# A or B, whoever didn't bust (and so picked up an item).
 		var holder: PokerPlayer = always.filter(func(p: PokerPlayer) -> bool: return p.has_item())[0]
-		_check(not table.can_use_item(holder), "a new item can't be used at the end of the hand it was picked up")
-		_check(holder.can_use_item(table.hand_number + 1), "an item can be used at the end of the next hand"))
+		var held := holder.items[0]
+		_check(not table.can_use_item(holder, held), "a new item can't be used at the end of the hand it was picked up")
+		_check(held.kind == Item.Kind.SHIELD or held.is_ready(table.hand_number + 1), "an item can be used at the end of the next hand"))
 
-	# Someone already carrying an item doesn't roll for another.
+	# Someone carrying one item picks up a second; someone with both hands full doesn't roll.
 	var holding: Array[PokerPlayer] = [PokerPlayer.new("A", 1000, brain), PokerPlayer.new("B", 1000, brain)]
-	holding[0].item = Item.Kind.GUN
-	holding[0].item_gained_on_hand = -1
+	var first := _hold(holding[0], Item.Kind.GUN)
+	var full: Array[HeldItem] = [_hold(holding[1], Item.Kind.GUN), _hold(holding[1], Item.Kind.SHIELD)]
 	_play_one_hand(1, holding, func(_table: PokerTable) -> void:
-		_check(holding[0].chips == 0 or holding[0].item_gained_on_hand == -1, "no new item while already carrying one"))
+		_check(holding[0].chips == 0 or (holding[0].items.size() == 2 and holding[0].items[0] == first), "a second item goes in the free hand")
+		_check(holding[1].items == full, "no new item with both hands full"))
+
+
+## Plays out item turns with a [ScriptedBrain]: dropping doesn't end the turn, using one item does,
+## and a magpie's catch gets a turn of its own.
+func _test_item_turn() -> void:
+	var table := PokerTable.new()
+	table.npc_think_time = 0
+	table.shot_delay = 0
+	table.magpie_delay = 0
+	table.magpie_swoop_delay = 0
+	table.magpie_carry_delay = 0
+	var brain := ScriptedBrain.new()
+	var me := PokerPlayer.new("ME", 1000, brain)
+	var other := PokerPlayer.new("OTHER", 1000, NpcBrain.new())
+	table.setup([me, other])
+	table.hand_number = 5
+	add_child(table)
+	var dropped: Array[Item.Kind] = []
+	table.item_dropped.connect(func(_p: PokerPlayer, item: Item.Kind) -> void: dropped.append(item))
+
+	# Drop the gun, then use the stimpak, in one turn.
+	me.hearts = 2
+	var gun := _hold(me, Item.Kind.GUN)
+	var stimpak := _hold(me, Item.Kind.STIMPAK)
+	brain.plan = [ItemDecision.new(Item.Action.DROP, gun), ItemDecision.new(Item.Action.USE, stimpak),
+		ItemDecision.new(Item.Action.KEEP)]
+	await table._item_turn(me)
+	_check(dropped == [Item.Kind.GUN] and me.hearts == 3 and not me.has_item(), "dropping an item doesn't end the turn")
+	_check(brain.offered.size() == 2 and brain.offered[1] == [stimpak], "after a drop, the turn carries on with what's left")
+
+	# Using one of two items ends the turn.
+	var guns: Array[HeldItem] = [_hold(me, Item.Kind.GUN), _hold(me, Item.Kind.GUN)]
+	brain.reset([ItemDecision.new(Item.Action.USE, guns[1], other), ItemDecision.new(Item.Action.USE, guns[0], other)])
+	await table._item_turn(me)
+	_check(me.items == [guns[0]] and other.hearts == 2 and brain.offered.size() == 1, "only one item is used in a turn")
+
+	# A magpie takes the picked item, and its catch gets a turn of its own; the caster's other item doesn't.
+	me.items.clear()
+	other.items.clear()
+	var magpie := _hold(me, Item.Kind.HEX, Hex.Effect.MAGPIE)
+	var kept := _hold(me, Item.Kind.STIMPAK)
+	_hold(other, Item.Kind.SHIELD)
+	var loot := _hold(other, Item.Kind.GUN)
+	brain.reset([ItemDecision.new(Item.Action.USE, magpie, other, loot), ItemDecision.new(Item.Action.KEEP)])
+	await table._item_turn(me)
+	_check(me.items == [kept, loot] and other.items.size() == 1, "a magpie steals the picked item")
+	_check(brain.offered.size() == 2 and brain.offered[1] == [loot], "a magpie's catch gets a turn of its own")
+	table.queue_free()
+
+
+## Decides item turns from [member plan], in order, noting what it was offered each time.
+class ScriptedBrain extends NpcBrain:
+	var plan: Array = []
+	var offered: Array = []
+
+	func reset(p_plan: Array) -> void:
+		plan = p_plan
+		offered.clear()
+
+	func decide_item(_me: PokerPlayer, p_offered: Array[HeldItem], _usable: Array[HeldItem],
+			_gun_targets: Array[PokerPlayer], _hex_targets: Callable) -> ItemDecision:
+		offered.append(p_offered.duplicate())
+		return plan.pop_front() if not plan.is_empty() else ItemDecision.new(Item.Action.KEEP)
 
 
 func _run_simulation() -> void:
@@ -607,7 +702,7 @@ func _run_simulation() -> void:
 		counts.shots += 1)
 	table.stimpak_used.connect(func(_p: PokerPlayer, _healed: bool) -> void:
 		counts.stimpaks += 1)
-	table.hex_cast.connect(func(_c: PokerPlayer, _effect: Hex.Effect, _t: PokerPlayer) -> void:
+	table.hex_cast.connect(func(_c: PokerPlayer, _effect: Hex.Effect, _t: PokerPlayer, _slot: int) -> void:
 		counts.hexes += 1)
 	# Stand in for the "next hand" button.
 	table.waiting_for_next_hand.connect(func() -> void:

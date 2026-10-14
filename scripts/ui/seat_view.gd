@@ -16,6 +16,8 @@ const COMPACT_SIZE := Vector2(106, 52 + UiTheme.LINE_HEIGHT * 3)
 const PORTRAIT_SIZE := Vector2(48, 48)
 const WIDE_CARD_SCALE := 2
 const STATUS_COLOR := Color("9fe0a0")
+## Space between the plates of two carried items, side by side along the portrait's bottom.
+const ITEM_PLATE_GAP := 3
 ## The dealer button: a square "D" in the inner bottom corner of the dealer's seat.
 const DEALER_SIZE := 9
 const HIT_SECONDS := 0.6
@@ -92,12 +94,13 @@ var _hex_glow_seconds := 0.0
 var _hex_glow_one_sided := false # the caster's glow: only on the side facing the table
 # When the bomb fell off (-1 = it hasn't).
 var _bomb_dropped_at := -1.0
-# When the hex fizzled (-1 = it hasn't).
+# When the hex fizzled (-1 = it hasn't), and which slot it was in.
 var _hex_fizzled_at := -1.0
-## Leaves the carried item off the portrait, while a magpie is still bringing it over.
-var item_hidden := false:
+var _hex_fizzle_slot := 0
+## A carried item left off the portrait, while a magpie is still bringing it over (null = none).
+var hidden_item: HeldItem:
 	set(value):
-		item_hidden = value
+		hidden_item = value
 		_portrait_layer.queue_redraw()
 
 # Scrolled through to make the caster's hex fire lick and flicker.
@@ -323,10 +326,12 @@ func _bomb_drop_time() -> float:
 	return t if t < BOMB_DROP_SECONDS else -1.0
 
 
-## The hex this player carried is gone, cast or fizzled: its icon sputters out and smokes over
-## [constant HEX_FIZZLE_SECONDS].
-func fizzle_hex() -> void:
+## The hex this player carried in [param slot] (its index in their items) is gone, cast or
+## fizzled: its icon sputters out and smokes over [constant HEX_FIZZLE_SECONDS], keeping its place
+## until its plate has faded.
+func fizzle_hex(slot: int) -> void:
 	_hex_fizzled_at = Time.get_ticks_msec() / 1000.0
+	_hex_fizzle_slot = slot
 	_update_processing()
 
 
@@ -514,17 +519,44 @@ static func _draw_portrait_frame(c: CanvasItem, frame: Rect2, dimmed: bool) -> v
 		c.draw_rect(Rect2(corner, Vector2.ONE), light)
 
 
-## The carried item, as a small icon on a dark plate in the portrait's bottom corner
-## nearest the cards. Not drawn while [member item_hidden].
+## The carried items, each a small icon on a dark plate along the portrait's bottom, the first in
+## the corner nearest the cards. [member hidden_item] isn't drawn.
 func _draw_item(c: CanvasItem, frame: Rect2) -> void:
-	if not player.has_item() or item_hidden:
-		return
-	var art := item_art(player.item as Item.Kind)
-	var plate := _item_plate(frame, art[0])
-	c.draw_rect(plate.grow(1), InterfaceStyle.current.trim_dark)
-	c.draw_rect(plate, PixelArt.INK)
-	c.draw_rect(plate.grow(-1), InterfaceStyle.current.button_normal)
-	PixelArt.draw_colored(c, art[0], art[1], plate.position + Vector2(2, 2), 1)
+	var slots := _slots()
+	var plates := _plates(frame, slots)
+	for i in slots.size():
+		var held: HeldItem = slots[i]
+		if held == null or held == hidden_item:
+			continue # the fizzling hex's place, drawn by _draw_hex_fizzle
+		var art := item_art(held.kind)
+		c.draw_rect(plates[i].grow(1), InterfaceStyle.current.trim_dark)
+		c.draw_rect(plates[i], PixelArt.INK)
+		c.draw_rect(plates[i].grow(-1), InterfaceStyle.current.button_normal)
+		PixelArt.draw_colored(c, art[0], art[1], plates[i].position + Vector2(2, 2), 1)
+
+
+## What's in each slot along the portrait's bottom: the carried items, with null keeping the place
+## of a hex that's still sputtering out (see [method fizzle_hex]).
+func _slots() -> Array:
+	var slots: Array = player.items.duplicate()
+	var t := _hex_fizzle_time()
+	if t >= 0 and t < HEX_SPUTTER_SECONDS:
+		slots.insert(mini(_hex_fizzle_slot, slots.size()), null)
+	return slots
+
+
+## The plate for each of [param slots] (items, or null for a hex's place) on the portrait
+## [param frame]: the first in the corner nearest the cards, the next beside it toward the middle.
+func _plates(frame: Rect2, slots: Array) -> Array[Rect2]:
+	var plates: Array[Rect2] = []
+	var x := frame.position.x if style == Style.COMPACT_RIGHT else frame.end.x
+	for held: HeldItem in slots:
+		var icon: Array = item_art(held.kind if held else Item.Kind.HEX)[0]
+		var plate_size := Vector2(icon[0].length(), icon.size()) + Vector2(4, 4)
+		var left := x if style == Style.COMPACT_RIGHT else x - plate_size.x
+		plates.append(Rect2(Vector2(left, frame.end.y - plate_size.y), plate_size))
+		x = left + plate_size.x + ITEM_PLATE_GAP if style == Style.COMPACT_RIGHT else left - ITEM_PLATE_GAP
+	return plates
 
 
 ## The hex's icon, [param t] seconds after it was cast or fizzled (it's gone from [member player] by now):
@@ -533,7 +565,13 @@ func _draw_item(c: CanvasItem, frame: Rect2) -> void:
 ## as they rise, growing and thinning out.
 func _draw_hex_fizzle(c: CanvasItem, frame: Rect2, t: float) -> void:
 	var icon := PixelArt.HEX_ICON
-	var plate := _item_plate(frame, icon)
+	var slots := _slots()
+	var gap := slots.find(null)
+	# Once its place is given up, the smoke carries on from where it was.
+	if gap < 0:
+		slots.insert(mini(_hex_fizzle_slot, slots.size()), null)
+		gap = slots.find(null)
+	var plate: Rect2 = _plates(frame, slots)[gap]
 	var plate_fade := clampf((HEX_SPUTTER_SECONDS - t) / HEX_PLATE_FADE_SECONDS, 0.0, 1.0)
 	if plate_fade > 0:
 		c.draw_rect(plate.grow(1), Color(InterfaceStyle.current.trim_dark, plate_fade))
@@ -584,17 +622,18 @@ static func _pixel_noise(x: int, y: int) -> float:
 	return n - floorf(n)
 
 
-## Where the plate for [param icon] sits on the portrait [param frame].
-func _item_plate(frame: Rect2, icon: Array[String]) -> Rect2:
-	var plate_size := Vector2(icon[0].length(), icon.size()) + Vector2(4, 4)
-	return Rect2(
-		Vector2(frame.position.x if style == Style.COMPACT_RIGHT else frame.end.x - plate_size.x,
-			frame.end.y - plate_size.y), plate_size)
+## Centre of the plate [param item] (one this player carries) is shown on, in the parent's coordinates.
+func item_center(item: HeldItem) -> Vector2:
+	var slots := _slots()
+	return position + _plates(_portrait_frame(), slots)[maxi(slots.find(item), 0)].get_center()
 
 
-## Centre of the plate [param item] is shown on, in the parent's coordinates.
-func item_center(item: Item.Kind) -> Vector2:
-	return position + _item_plate(_portrait_frame(), item_art(item)[0]).get_center()
+## Centre of the plate a newly gained [param kind] will be shown on, after what this player
+## carries now, in the parent's coordinates.
+func next_item_center(kind: Item.Kind) -> Vector2:
+	var slots: Array = player.items.duplicate()
+	slots.append(HeldItem.new(kind, 0))
+	return position + _plates(_portrait_frame(), slots)[-1].get_center()
 
 
 ## The icon for [param item] (drawn at 1x): [pattern, colours] for [method PixelArt.draw_colored].

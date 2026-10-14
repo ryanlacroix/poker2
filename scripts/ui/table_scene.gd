@@ -99,9 +99,19 @@ var _raise_label: Label
 var _next_hand_button: Button
 ## Fades NEXT HAND out once it's pressed (see [method _fade_out_next_hand]).
 var _next_hand_tween: Tween
-var _use_item_button: Button
-var _drop_item_button: Button
+## The human's item turn: a USE button for each item that can be used now and a DROP button for
+## each item, in a row (split in two when there are two).
+var _use_buttons: Array[Button] = []
+var _drop_buttons: Array[Button] = []
+## Where each row of item buttons goes, across the action panel's width.
+var _use_row: Rect2
+var _drop_row: Rect2
 var _human_item_turn := false # the item phase is waiting on the human's choice
+## The items the human's item turn is for: all they carry, or just a magpie's catch ([member _only_item]).
+var _offered: Array[HeldItem] = []
+var _only_item: HeldItem
+## The item the human is using: aiming the gun, or casting the hex.
+var _using: HeldItem
 var _continue_after_items := false # NEXT HAND was pressed on the human's item turn
 var _debug_menu: DebugMenu
 # Taps on the hidden debug spot: how many in a row, and when the last one was.
@@ -399,19 +409,20 @@ func _build_ui() -> void:
 
 	_build_action_bar()
 
-	# The human's item turn, in the action panel's area: DROP in its bottom slot, and USE just
-	# above it once the item is ready. (Keeping it is NEXT HAND.)
+	# The human's item turn, in the action panel's area: the DROP buttons in its bottom slot, and
+	# the USE buttons just above them for items that are ready. (Keeping them is NEXT HAND.)
 	var bar := _layout.action_bar
-	var item_button_size := Vector2(bar.size.x - PortraitLayout.ACTION_PADDING * 2, PortraitLayout.ACTION_BUTTON_HEIGHT)
-	var drop_at := Vector2(bar.position.x + PortraitLayout.ACTION_PADDING,
-		bar.end.y - PortraitLayout.ACTION_PADDING - PortraitLayout.ACTION_BUTTON_HEIGHT)
-	_drop_item_button = _new_button("", false)
-	UiTheme.add_at(self, _drop_item_button, drop_at, item_button_size)
-	_drop_item_button.pressed.connect(func() -> void: _submit_item_decision(ItemDecision.new(Item.Action.DROP)))
-	_use_item_button = _new_button("", false)
-	UiTheme.add_at(self, _use_item_button,
-		drop_at - Vector2(0, PortraitLayout.ACTION_BUTTON_HEIGHT + PortraitLayout.ACTION_GAP), item_button_size)
-	_use_item_button.pressed.connect(_use_item)
+	var item_row_size := Vector2(bar.size.x - PortraitLayout.ACTION_PADDING * 2, PortraitLayout.ACTION_BUTTON_HEIGHT)
+	_drop_row = Rect2(Vector2(bar.position.x + PortraitLayout.ACTION_PADDING,
+		bar.end.y - PortraitLayout.ACTION_PADDING - PortraitLayout.ACTION_BUTTON_HEIGHT), item_row_size)
+	_use_row = Rect2(_drop_row.position - Vector2(0, PortraitLayout.ACTION_BUTTON_HEIGHT + PortraitLayout.ACTION_GAP), item_row_size)
+	for i in Item.MAX_HELD:
+		var drop := _new_button("", false)
+		UiTheme.add_at(self, drop, _drop_row.position, item_row_size)
+		_drop_buttons.append(drop)
+		var use := _new_button("", false)
+		UiTheme.add_at(self, use, _use_row.position, item_row_size)
+		_use_buttons.append(use)
 
 	# Added last so it draws over everything else.
 	_win_banner = WinBanner.new()
@@ -701,12 +712,13 @@ func _connect_table() -> void:
 				_win_banner.finished.connect(_announce_items, CONNECT_ONE_SHOT)
 		else:
 			_announce_items())
-	_table.item_turn_started.connect(func(player: PokerPlayer, can_use: bool) -> void:
+	_table.item_turn_started.connect(func(player: PokerPlayer, offered: Array[HeldItem]) -> void:
 		for seat in _seats:
 			seat.set_active(seat.player == player)
 		if player.is_human():
 			_human_item_turn = true
-			_show_item_buttons(can_use))
+			_only_item = offered[0] if offered.size() < player.items.size() else null
+			_show_item_buttons())
 	_table.shot.connect(_on_shot)
 	_table.stimpak_used.connect(func(player: PokerPlayer, healed: bool) -> void:
 		var seat := _seats[player.seat]
@@ -717,8 +729,8 @@ func _connect_table() -> void:
 			seat.set_status("WASTED", PixelArt.PAPER)
 		seat.refresh())
 	_table.hex_cast.connect(_on_hex_cast)
-	_table.hex_fizzled.connect(func(caster: PokerPlayer, effect: Hex.Effect) -> void:
-		_seats[caster.seat].fizzle_hex()
+	_table.hex_fizzled.connect(func(caster: PokerPlayer, effect: Hex.Effect, slot: int) -> void:
+		_seats[caster.seat].fizzle_hex(slot)
 		_seats[caster.seat].set_status("HEX FIZZLED", PixelArt.PAPER)
 		_seats[caster.seat].refresh() # the hex is lost
 		if not caster.is_human():
@@ -767,25 +779,42 @@ func _announce_items() -> void:
 	_item_news.clear()
 
 
-## The human's item turn: NEXT HAND (keep it) and DROP always, USE as well when the item is ready.
-func _show_item_buttons(can_use: bool) -> void:
+## The human's item turn: NEXT HAND (keep them) and a DROP for each offered item always, and a
+## USE for each that can be used now; two of either sit side by side, splitting the row.
+func _show_item_buttons() -> void:
 	_hide_item_buttons()
 	var human := _table.players[0]
-	if not human.has_item():
+	_offered.assign(human.items.filter(func(held: HeldItem) -> bool:
+		return _only_item == null or held == _only_item))
+	if _offered.is_empty():
 		return
-	var item_name := Item.display_name(human.item as Item.Kind)
 	_show_next_hand()
-	_drop_item_button.text = "DROP %s" % item_name
-	_drop_item_button.visible = true
-	if can_use:
-		_use_item_button.text = "USE %s" % item_name
-		_use_item_button.visible = true
-	# NEXT HAND has focus, so Enter / Space keep it and move on.
+	var usable := _offered.filter(func(held: HeldItem) -> bool: return _table.can_use_item(human, held))
+	_lay_out_item_row(_drop_buttons, _drop_row, _offered, "DROP", func(held: HeldItem) -> void:
+		_submit_item_decision(ItemDecision.new(Item.Action.DROP, held)))
+	_lay_out_item_row(_use_buttons, _use_row, usable, "USE", _use_item)
+	# NEXT HAND has focus, so Enter / Space keep them and move on.
+
+
+## Shows one of [param buttons] per item in [param items] across [param row], labelled
+## "[param verb] <item>", each calling [param on_pressed] with its item.
+func _lay_out_item_row(buttons: Array[Button], row: Rect2, items: Array, verb: String, on_pressed: Callable) -> void:
+	var width := (row.size.x - PortraitLayout.ACTION_GAP * (items.size() - 1)) / maxi(items.size(), 1)
+	for i in items.size():
+		var button := buttons[i]
+		var held: HeldItem = items[i]
+		button.text = "%s %s" % [verb, Item.display_name(held.kind)]
+		button.position = row.position + Vector2((width + PortraitLayout.ACTION_GAP) * i, 0)
+		button.size = Vector2(width, row.size.y)
+		for connection in button.pressed.get_connections():
+			button.pressed.disconnect(connection.callable)
+		button.pressed.connect(on_pressed.bind(held))
+		button.visible = true
 
 
 func _hide_item_buttons() -> void:
-	_use_item_button.visible = false
-	_drop_item_button.visible = false
+	for button in _use_buttons + _drop_buttons:
+		button.visible = false
 	# Once pressed, NEXT HAND is left to finish fading out.
 	if not (_next_hand_tween and _next_hand_tween.is_running()):
 		_next_hand_button.visible = false
@@ -821,60 +850,68 @@ func _submit_item_decision(decision: ItemDecision) -> void:
 	_table.submit_item_decision(decision)
 
 
-## Debug: hands the human [param item], replacing whatever they carry. It counts as
-## picked up a hand ago, so it can be used at the end of this hand (or right now, on their item turn).
-func _debug_give_item(item: Item.Kind) -> void:
+## Debug: puts a ready [param kind] in [param p]'s hands, making room by dropping the first item
+## they carry if their hands are full. It counts as picked up a hand ago, so it can be used at the
+## end of this hand (or right now, on an item turn). Returns it.
+func _debug_hand(p: PokerPlayer, kind: Item.Kind) -> HeldItem:
+	if not p.has_free_hand():
+		p.remove_item(p.items[0])
+	var held := _table.give_item(p, kind)
+	held.gained_on_hand = _table.hand_number - 1
+	_seats[p.seat].refresh()
+	return held
+
+
+## Debug: hands the human [param item] (see [method _debug_hand]). Returns it, or null while a hex
+## is being cast (it's already revealed).
+func _debug_give_item(item: Item.Kind) -> HeldItem:
 	if _hex_modal:
-		return # the hex being cast is already revealed
-	var human := _table.players[0]
-	_table.give_item(human, item)
-	human.item_gained_on_hand = _table.hand_number - 1
-	_seats[0].refresh()
-	if _human_item_turn and not _targeting:
-		_show_item_buttons(_table.can_use_item(human))
+		return null
+	var held := _debug_hand(_table.players[0], item)
+	_refresh_item_buttons()
+	return held
 
 
 ## Debug: hands the human a hex with [param effect] (see [method _debug_give_item]).
 func _debug_give_hex(effect: Hex.Effect) -> void:
-	_debug_give_item(Item.Kind.HEX)
-	if _hex_modal == null:
-		_table.players[0].hex = effect
+	var held := _debug_give_item(Item.Kind.HEX)
+	if held:
+		held.hex = effect
 
 
-## Debug: hands every NPC still in the game a stimpak, replacing whatever they carry. Like
-## [method _debug_give_item], each counts as picked up a hand ago, so it's ready to use.
+## On the human's item turn (not while aiming), shows the item buttons again for what they carry now.
+func _refresh_item_buttons() -> void:
+	if _human_item_turn and not _targeting and _hex_modal == null:
+		_show_item_buttons()
+
+
+## Debug: hands every NPC still in the game a stimpak (see [method _debug_hand]).
 func _debug_give_npcs_stimpaks() -> void:
 	for p in _table.players:
-		if p.is_human() or not PokerTable.in_game(p):
-			continue
-		_table.give_item(p, Item.Kind.STIMPAK)
-		p.item_gained_on_hand = _table.hand_number - 1
-		_seats[p.seat].refresh()
+		if not p.is_human() and PokerTable.in_game(p):
+			_debug_hand(p, Item.Kind.STIMPAK)
 
 
-## Debug: hands a random NPC still in the game, and not already carrying a shield, a shield,
-## replacing whatever they carry.
+## Debug: hands a random NPC still in the game, and not already carrying a shield, a shield (see
+## [method _debug_hand]).
 func _debug_give_npc_shield() -> void:
 	var npcs := _table.players.filter(func(p: PokerPlayer) -> bool:
-		return not p.is_human() and PokerTable.in_game(p) and p.item != Item.Kind.SHIELD)
-	if npcs.is_empty():
-		return
-	var npc: PokerPlayer = npcs.pick_random()
-	_table.give_item(npc, Item.Kind.SHIELD)
-	npc.item_gained_on_hand = _table.hand_number - 1
-	_seats[npc.seat].refresh()
+		return not p.is_human() and PokerTable.in_game(p) and not p.has(Item.Kind.SHIELD))
+	if not npcs.is_empty():
+		_debug_hand(npcs.pick_random(), Item.Kind.SHIELD)
 
 
 ## Debug: every hex anyone's carrying fizzles, as if they'd tried it with nobody to pick. Not the
-## human's while its modal is open.
+## one the human is casting.
 func _debug_fizzle_hexes() -> void:
 	for p in _table.players:
-		if p.item != Item.Kind.HEX or (p.is_human() and _hex_modal):
-			continue
-		p.item = Item.NONE
-		_table.hex_fizzled.emit(p, p.hex)
-	if _human_item_turn and not _targeting:
-		_show_item_buttons(_table.can_use_item(_table.players[0]))
+		for held in p.items.duplicate():
+			if held.kind != Item.Kind.HEX or (held == _using and _hex_modal):
+				continue
+			var slot := p.items.find(held)
+			p.remove_item(held)
+			_table.hex_fizzled.emit(p, held.hex, slot)
+	_refresh_item_buttons()
 
 
 ## Debug: blows up a random NPC still in the game, as if a boom trap went off on them. Their
@@ -923,17 +960,19 @@ func _debug_lose_heart() -> void:
 	_seats[0].refresh()
 
 
-func _use_item() -> void:
+## The human uses [param held]: aims a gun, takes a stimpak, or reveals a hex.
+func _use_item(held: HeldItem) -> void:
 	var human := _table.players[0]
-	match human.item:
+	_using = held
+	match held.kind:
 		Item.Kind.GUN:
 			_hide_item_buttons()
 			_enter_target_mode(_table.gun_targets(human), true, "PICK A TARGET")
 		Item.Kind.STIMPAK:
-			_submit_item_decision(ItemDecision.new(Item.Action.USE))
+			_submit_item_decision(ItemDecision.new(Item.Action.USE, held))
 		Item.Kind.HEX:
 			_hide_item_buttons()
-			_show_hex_modal(human.hex)
+			_show_hex_modal(held)
 
 
 ## Seats of [param players] pulse and take a tap; the gun floats in the middle while aiming one.
@@ -952,7 +991,8 @@ func _enter_target_mode(players: Array[PokerPlayer], with_gun: bool, hint: Strin
 ## The hex is revealed: its name, what it does, and CAST (there's no backing out). Casting one
 ## that needs a target then has the human pick who. One with nobody to pick (see
 ## [method PokerTable.hex_fizzles]) only offers to let it go, losing it.
-func _show_hex_modal(effect: Hex.Effect) -> void:
+func _show_hex_modal(held: HeldItem) -> void:
+	var effect := held.hex
 	var box := VBoxContainer.new()
 	var title := Label.new()
 	title.text = Hex.display_name(effect)
@@ -973,15 +1013,15 @@ func _show_hex_modal(effect: Hex.Effect) -> void:
 	detail.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	detail.custom_minimum_size.x = HEX_MODAL_TEXT_WIDTH
 	box.add_child(detail)
-	var fizzles := _table.hex_fizzles(_table.players[0])
+	var fizzles := _table.hex_fizzles(_table.players[0], held)
 	var cast := _new_button("%s - DROP HEX" % _no_target_reason(effect) if fizzles else "CAST")
 	cast.pressed.connect(func() -> void:
 		_hex_modal.queue_free()
 		_hex_modal = null
 		if Hex.needs_target(effect) and not fizzles:
-			_enter_target_mode(_table.hex_targets(_table.players[0]), false, "PICK A PLAYER")
+			_enter_target_mode(_table.hex_targets(_table.players[0], effect), false, "PICK A PLAYER")
 		else:
-			_submit_item_decision(ItemDecision.new(Item.Action.USE)))
+			_submit_item_decision(ItemDecision.new(Item.Action.USE, held)))
 	box.add_child(cast)
 	_hex_modal = _show_modal(box)
 	cast.grab_focus()
@@ -1009,7 +1049,35 @@ func _on_seat_targeted(target: SeatView) -> void:
 		_debug_pick = Callable()
 		pick.call(target.player)
 		return
-	_submit_item_decision(ItemDecision.new(Item.Action.USE, target.player))
+	var victim := target.player
+	if _using.kind == Item.Kind.HEX and _using.hex == Hex.Effect.MAGPIE:
+		if victim.items.size() > 1:
+			_show_steal_modal(victim)
+		else:
+			_submit_item_decision(ItemDecision.new(Item.Action.USE, _using, victim, victim.items[0]))
+		return
+	_submit_item_decision(ItemDecision.new(Item.Action.USE, _using, victim))
+
+
+## The human's magpie is after [param victim], who carries more than one item: they pick which it
+## steals (there's no backing out).
+func _show_steal_modal(victim: PokerPlayer) -> void:
+	var box := VBoxContainer.new()
+	var title := Label.new()
+	title.text = "STEAL WHICH?"
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	title.add_theme_font_size_override("font_size", 32)
+	title.add_theme_color_override("font_color", PixelArt.HEART_RED)
+	box.add_child(title)
+	var modal: Control
+	for held in victim.items:
+		var button := _new_button("STEAL %s" % Item.display_name(held.kind))
+		button.pressed.connect(func() -> void:
+			modal.queue_free()
+			_submit_item_decision(ItemDecision.new(Item.Action.USE, _using, victim, held)))
+		box.add_child(button)
+	modal = _show_modal(box)
+	box.get_child(1).grab_focus()
 
 
 ## Someone fired a gun: the screen darkens, a tracer joins the two portraits and the target
@@ -1037,7 +1105,7 @@ func _on_shot(shooter: PokerPlayer, target_player: PokerPlayer, result: Item.Sho
 ## A hex was cast: the table dims under a blood-red mist while its target glows the same red (and
 ## its caster, from the side facing the table), the caster's status names it, the used-up hex
 ## sputters out on the caster's portrait, and a shimmer lights up its target.
-func _on_hex_cast(caster: PokerPlayer, effect: Hex.Effect, target: PokerPlayer) -> void:
+func _on_hex_cast(caster: PokerPlayer, effect: Hex.Effect, target: PokerPlayer, slot: int) -> void:
 	# First child: over the table's own drawing, under the seats, cards and buttons.
 	var mist := HexMist.new()
 	UiTheme.add_at(self, mist, Vector2.ZERO, get_viewport_rect().size)
@@ -1046,7 +1114,7 @@ func _on_hex_cast(caster: PokerPlayer, effect: Hex.Effect, target: PokerPlayer) 
 		_seats[target.seat].hex_glow(HexMist.DRIFT_SECONDS)
 	_seats[caster.seat].hex_glow(HexMist.DRIFT_SECONDS, true)
 	_seats[caster.seat].set_status("CAST %s" % Hex.display_name(effect), PixelArt.HEART_RED)
-	_seats[caster.seat].fizzle_hex() # the hex is used up
+	_seats[caster.seat].fizzle_hex(slot) # the hex is used up
 	_seats[caster.seat].refresh()
 	match effect:
 		Hex.Effect.SHIMMER:
@@ -1087,31 +1155,30 @@ func _on_lightning_struck(_caster: PokerPlayer, target_player: PokerPlayer, resu
 	_shake_screen()
 
 
-## A magpie swoops down on [param target_player]'s item, to carry it to [param caster]. It's
-## taken from the target's seat as the bird grabs it ([method _on_item_stolen]), and shows up on
-## the caster's as the bird lets go.
-func _on_magpie_swooped(caster: PokerPlayer, target_player: PokerPlayer) -> void:
-	var item := target_player.item as Item.Kind
+## A magpie swoops down on [param target_player]'s [param item], to carry it to [param caster].
+## It's taken from the target's seat as the bird grabs it ([method _on_item_stolen]), and shows up
+## on the caster's as the bird lets go.
+func _on_magpie_swooped(caster: PokerPlayer, target_player: PokerPlayer, item: HeldItem) -> void:
 	var bird := MagpieBird.new()
-	bird.item = item
+	bird.item = item.kind
 	bird.grab_at = _seats[target_player.seat].item_center(item)
-	bird.drop_at = _seats[caster.seat].item_center(item)
+	bird.drop_at = _seats[caster.seat].next_item_center(item.kind)
 	# Over everything on the table, like a lightning bolt.
 	bird.z_index = LIGHTNING_Z
 	var caster_seat := _seats[caster.seat]
 	bird.delivered.connect(func() -> void:
-		caster_seat.item_hidden = false
+		caster_seat.hidden_item = null
 		caster_seat.refresh())
 	add_child(bird) # it places itself
 
 
 ## The magpie snatched [param item] from [param target]: gone from their seat, and kept off the
 ## caster's until the bird drops it there.
-func _on_item_stolen(caster: PokerPlayer, target: PokerPlayer, item: Item.Kind) -> void:
-	_seats[target.seat].set_status("LOST %s" % Item.display_name(item), PixelArt.HEART_RED)
+func _on_item_stolen(caster: PokerPlayer, target: PokerPlayer, item: HeldItem) -> void:
+	_seats[target.seat].set_status("LOST %s" % Item.display_name(item.kind), PixelArt.HEART_RED)
 	_seats[target.seat].refresh()
-	_seats[caster.seat].item_hidden = true
-	_seats[caster.seat].set_status("STOLE %s" % Item.display_name(item), PixelArt.GOLD)
+	_seats[caster.seat].hidden_item = item
+	_seats[caster.seat].set_status("STOLE %s" % Item.display_name(item.kind), PixelArt.GOLD)
 	_seats[caster.seat].refresh()
 
 

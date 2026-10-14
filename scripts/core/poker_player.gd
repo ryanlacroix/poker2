@@ -10,12 +10,8 @@ var chips := 0
 var hearts := 3
 ## Hearts they started with: a stimpak can't heal them past this.
 var max_hearts := 3
-## The one item this player carries ([enum Item.Kind]), or [constant Item.NONE].
-var item: int = Item.NONE
-## Number of the hand at whose end [member item] was picked up.
-var item_gained_on_hand := 0
-## What [member item] casts when it's a hex: rolled on pickup, secret until it's used.
-var hex := Hex.Effect.SHIMMER
+## The items this player carries, in the order they were picked up: up to [constant Item.MAX_HELD].
+var items: Array[HeldItem] = []
 ## Whoever put a shimmer on this player, or null if none is on them (see [constant Hex.Effect.SHIMMER]).
 var shimmered_by: PokerPlayer
 ## Whoever put a leech on this player, or null if none is on them (see [constant Hex.Effect.LEECH]).
@@ -69,13 +65,30 @@ func is_trapped() -> bool:
 
 
 func has_item() -> bool:
-	return item != Item.NONE
+	return not items.is_empty()
 
 
-## Items can't be used straight away: only at the end of a later hand than the one they
-## were picked up in.
-func can_use_item(hand_number: int) -> bool:
-	return has_item() and hand_number > item_gained_on_hand
+## Has room to pick up another item.
+func has_free_hand() -> bool:
+	return items.size() < Item.MAX_HELD
+
+
+## Carries at least one [param kind].
+func has(kind: Item.Kind) -> bool:
+	return first(kind) != null
+
+
+## The first [param kind] they carry, or null.
+func first(kind: Item.Kind) -> HeldItem:
+	for held in items:
+		if held.kind == kind:
+			return held
+	return null
+
+
+## Takes [param held] out of their hands (if they have it).
+func remove_item(held: HeldItem) -> void:
+	items.erase(held)
 
 
 func reset_for_hand() -> void:

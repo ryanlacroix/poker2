@@ -1,12 +1,13 @@
 class_name Item
 extends RefCounted
-## Something a player can carry, one at a time. Shown as a small icon on their seat.
+## Something a player can carry, up to [constant MAX_HELD] at a time (see [HeldItem]). Shown as
+## small icons on their seat.
 
 enum Kind {
 	## Used between hands to shoot an NPC, taking one of their hearts.
 	GUN,
-	## Protects from the moment it's picked up: the next shot breaks it instead of taking a heart.
-	## Has no use action; it can only be dropped.
+	## Protects from the moment it's picked up, in either hand: the next shot breaks it instead of
+	## taking a heart. Has no use action; it can only be dropped.
 	SHIELD,
 	## Used between hands to win back a heart, if the holder has lost any; used up either way.
 	STIMPAK,
@@ -15,10 +16,11 @@ enum Kind {
 	HEX,
 }
 
-## A player's item slot when they carry nothing.
-const NONE := -1
+## How many items a player can carry at once.
+const MAX_HELD := 2
 
-## What a player does with their item on their turn in the item phase.
+## What a player does on their turn in the item phase: use one item (which ends the turn), drop
+## one (after which they carry on with the turn), or keep what they have (ending it).
 enum Action { KEEP, USE, DROP }
 
 ## What happened when someone was shot.

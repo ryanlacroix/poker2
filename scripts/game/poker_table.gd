@@ -20,15 +20,17 @@ signal hand_finished
 ## Emitted after a hand (when [member wait_for_next_hand] is on) so the view can finish showing
 ## it first; call [method begin_item_phase] to start the item turns.
 signal waiting_for_item_phase
-## It's this player's item turn (and whether they can use their item now). For the human,
-## answer with [method submit_item_decision]; NPCs only emit it when they'll use or drop.
-signal item_turn_started(player: PokerPlayer, can_use: bool)
+## It's this player's item turn, for the items in [param offered] (see [method can_use_item] for
+## which can be used now). For the human, answer with [method submit_item_decision]; NPCs only
+## emit it when they'll use or drop something. After a drop it's emitted again for what's left.
+signal item_turn_started(player: PokerPlayer, offered: Array[HeldItem])
 ## A gun was fired.
 signal shot(shooter: PokerPlayer, target: PokerPlayer, result: Item.ShotResult)
 ## A stimpak was used up, and whether it won back a heart (it does nothing at full health).
 signal stimpak_used(player: PokerPlayer, healed: bool)
-## A hex was cast (and used up); [param target] is null for a hex that doesn't need one.
-signal hex_cast(caster: PokerPlayer, effect: Hex.Effect, target: PokerPlayer)
+## A hex was cast (and used up) from [param slot] of the caster's hands (its index in their
+## items, before it went); [param target] is null for a hex that doesn't need one.
+signal hex_cast(caster: PokerPlayer, effect: Hex.Effect, target: PokerPlayer, slot: int)
 ## A shot at a shimmering player ([param source]) also hit [param target].
 signal shot_spread(source: PokerPlayer, target: PokerPlayer, result: Item.ShotResult)
 ## The shimmer on [param player] wore off, as they were shot.
@@ -39,12 +41,12 @@ signal leech_drained(caster: PokerPlayer, victim: PokerPlayer, amount: int)
 signal leech_ended(victim: PokerPlayer)
 ## Lightning [param caster] called down struck [param target].
 signal lightning_struck(caster: PokerPlayer, target: PokerPlayer, result: Item.ShotResult)
-## The magpie [param caster] sent is swooping down on [param target]'s item; it's taken
+## The magpie [param caster] sent is swooping down on [param target]'s [param item]; it's taken
 ## [member magpie_swoop_delay] later, with [signal item_stolen].
-signal magpie_swooped(caster: PokerPlayer, target: PokerPlayer)
+signal magpie_swooped(caster: PokerPlayer, target: PokerPlayer, item: HeldItem)
 ## The magpie took [param item] from [param target] for [param caster]; it's carried over for
-## [member magpie_carry_delay], then [param caster] gets another item turn.
-signal item_stolen(caster: PokerPlayer, target: PokerPlayer, item: Item.Kind)
+## [member magpie_carry_delay], then [param caster] gets another item turn, for it alone.
+signal item_stolen(caster: PokerPlayer, target: PokerPlayer, item: HeldItem)
 ## The bomb [param caster] strapped to [param victim] went off, blowing them out of the game.
 signal bomb_exploded(victim: PokerPlayer, caster: PokerPlayer)
 ## [param victim] saw the hand through, so the bomb on them fell off.
@@ -54,9 +56,10 @@ signal bomb_dropped(victim: PokerPlayer)
 signal overload_charging(caster: PokerPlayer, target: PokerPlayer)
 ## The shield overload [param caster] cast blew up [param target], taking all their hearts.
 signal overload_exploded(caster: PokerPlayer, target: PokerPlayer)
-## [param caster] tried to cast their hex, but it turned out to be [param effect] and nobody could
-## be picked for it (see [method hex_fizzles]), so it's lost.
-signal hex_fizzled(caster: PokerPlayer, effect: Hex.Effect)
+## [param caster] tried to cast the hex in [param slot] of their hands (as for [signal hex_cast]),
+## but it turned out to be [param effect] and nobody could be picked for it (see
+## [method hex_fizzles]), so it's lost.
+signal hex_fizzled(caster: PokerPlayer, effect: Hex.Effect, slot: int)
 signal item_dropped(player: PokerPlayer, item: Item.Kind)
 signal item_phase_finished
 ## Emitted between hands when [member wait_for_next_hand] is on; call [method continue_to_next_hand].
@@ -163,21 +166,20 @@ func submit_item_decision(decision: ItemDecision) -> void:
 		_human_item_decision.set_result(decision)
 
 
-## Puts [param item] in [param p]'s hands, picked up at the end of this hand. A hex gets its
-## secret effect now.
-func give_item(p: PokerPlayer, item: Item.Kind) -> void:
-	p.item = item
-	p.item_gained_on_hand = hand_number
-	if item == Item.Kind.HEX:
-		p.hex = Hex.random()
+## Puts [param item] in [param p]'s free hand, picked up at the end of this hand. A hex gets its
+## secret effect now. Returns it.
+func give_item(p: PokerPlayer, item: Item.Kind) -> HeldItem:
+	assert(p.has_free_hand(), "%s's hands are full" % p.display_name)
+	var held := HeldItem.new(item, hand_number, Hex.random() if item == Item.Kind.HEX else Hex.Effect.SHIMMER)
+	p.items.append(held)
+	return held
 
 
-## [param shooter] fires their gun (used up) at [param target] (call between hands).
-## A shield breaks and absorbs the shot; otherwise it takes a heart. If [param target] is
-## shimmering, follow up with [method spread_shimmer].
-func shoot(shooter: PokerPlayer, target: PokerPlayer) -> Item.ShotResult:
-	if shooter.item == Item.Kind.GUN:
-		shooter.item = Item.NONE
+## [param shooter] fires [param gun] (used up; their first gun if not given) at [param target]
+## (call between hands). A shield breaks and absorbs the shot; otherwise it takes a heart. If
+## [param target] is shimmering, follow up with [method spread_shimmer].
+func shoot(shooter: PokerPlayer, target: PokerPlayer, gun: HeldItem = null) -> Item.ShotResult:
+	shooter.remove_item(gun if gun else shooter.first(Item.Kind.GUN))
 	return _hit(target, shooter)
 
 
@@ -198,10 +200,11 @@ func spread_shimmer(shooter: PokerPlayer, target: PokerPlayer) -> Dictionary:
 	return hits
 
 
-## A shot at [param target] by [param shooter]: breaks their shield, or takes a heart.
+## A shot at [param target] by [param shooter]: breaks a shield they carry (in either hand), or
+## takes a heart.
 func _hit(target: PokerPlayer, shooter: PokerPlayer) -> Item.ShotResult:
-	if target.item == Item.Kind.SHIELD:
-		target.item = Item.NONE
+	if target.has(Item.Kind.SHIELD):
+		target.remove_item(target.first(Item.Kind.SHIELD))
 		chips_changed.emit()
 		return Item.ShotResult.SHIELD_BROKE
 	return Item.ShotResult.ELIMINATED if remove_heart(target, shooter) else Item.ShotResult.HIT
@@ -221,11 +224,10 @@ func remove_heart(target: PokerPlayer, taker: PokerPlayer) -> bool:
 	return eliminated
 
 
-## [param p] uses up their stimpak (call between hands), winning back a heart if they've lost
-## any. Returns true if it healed them.
-func use_stimpak(p: PokerPlayer) -> bool:
-	if p.item == Item.Kind.STIMPAK:
-		p.item = Item.NONE
+## [param p] uses up [param stimpak] (their first stimpak if not given; call between hands),
+## winning back a heart if they've lost any. Returns true if it healed them.
+func use_stimpak(p: PokerPlayer, stimpak: HeldItem = null) -> bool:
+	p.remove_item(stimpak if stimpak else p.first(Item.Kind.STIMPAK))
 	var healed := p.is_hurt()
 	if healed:
 		p.hearts += 1
@@ -233,15 +235,15 @@ func use_stimpak(p: PokerPlayer) -> bool:
 	return healed
 
 
-## [param caster] uses up their hex (call between hands), casting its effect on [param target]
-## if it needs one. Returns false, keeping the hex, if [param target] can't be picked.
-func cast_hex(caster: PokerPlayer, target: PokerPlayer) -> bool:
-	if caster.item != Item.Kind.HEX:
+## [param caster] uses up their [param hex] (call between hands), casting its effect on
+## [param target] if it needs one. Returns false, keeping the hex, if [param target] can't be picked.
+func cast_hex(caster: PokerPlayer, hex: HeldItem, target: PokerPlayer) -> bool:
+	if hex == null or hex.kind != Item.Kind.HEX or hex not in caster.items:
 		return false
-	if Hex.needs_target(caster.hex) and target not in hex_targets(caster):
+	if Hex.needs_target(hex.hex) and target not in hex_targets(caster, hex.hex):
 		return false
-	caster.item = Item.NONE
-	match caster.hex:
+	caster.remove_item(hex)
+	match hex.hex:
 		Hex.Effect.SHIMMER:
 			target.shimmered_by = caster
 		Hex.Effect.LEECH:
@@ -257,7 +259,7 @@ func cast_hex(caster: PokerPlayer, target: PokerPlayer) -> bool:
 ## with a [constant Hex.LIGHTNING_PERCENT]% chance each, in seat order. Hit each with
 ## [method strike_lightning].
 func roll_lightning(caster: PokerPlayer) -> Array[PokerPlayer]:
-	return hex_targets(caster).filter(func(_p: PokerPlayer) -> bool:
+	return hex_targets(caster, Hex.Effect.LIGHTNING).filter(func(_p: PokerPlayer) -> bool:
 		return randi_range(0, 99) < Hex.LIGHTNING_PERCENT)
 
 
@@ -267,17 +269,15 @@ func strike_lightning(caster: PokerPlayer, target: PokerPlayer) -> Item.ShotResu
 	return _hit(target, caster)
 
 
-## The magpie [param thief] cast takes [param victim]'s item (and a hex's secret effect with it)
-## and gives it to [param thief], ready to use straight away. Returns the item, or
-## [constant Item.NONE] if [param victim] has nothing.
-func steal_item(thief: PokerPlayer, victim: PokerPlayer) -> int:
-	var item := victim.item
-	if item == Item.NONE:
-		return item
-	thief.item = item
-	thief.hex = victim.hex
-	thief.item_gained_on_hand = hand_number - 1 # as if held since an earlier hand
-	victim.item = Item.NONE
+## The magpie [param thief] cast takes [param item] from [param victim] (a hex's secret effect
+## and all) and gives it to [param thief], ready to use straight away. Returns it, or null if
+## [param victim] doesn't have it.
+func steal_item(thief: PokerPlayer, victim: PokerPlayer, item: HeldItem) -> HeldItem:
+	if item not in victim.items:
+		return null
+	victim.remove_item(item)
+	item.gained_on_hand = hand_number - 1 # as if held since an earlier hand
+	thief.items.append(item)
 	chips_changed.emit()
 	return item
 
@@ -333,36 +333,36 @@ func drain_leech(victim: PokerPlayer) -> int:
 	return amount
 
 
-## Everyone [param caster] could cast their hex on: anyone else still in the game, but for a
-## magpie only those carrying an item, for a boom trap only those without a bomb on already, and
-## for a shield overload only those carrying a shield.
-func hex_targets(caster: PokerPlayer) -> Array[PokerPlayer]:
+## Everyone [param caster] could cast a hex with [param effect] on: anyone else still in the game,
+## but for a magpie only those carrying an item, for a boom trap only those without a bomb on
+## already, and for a shield overload only those carrying a shield.
+func hex_targets(caster: PokerPlayer, effect: Hex.Effect) -> Array[PokerPlayer]:
 	var targets := gun_targets(caster)
-	match caster.hex:
+	match effect:
 		Hex.Effect.MAGPIE:
 			return targets.filter(func(t: PokerPlayer) -> bool: return t.has_item())
 		Hex.Effect.BOOM_TRAP:
 			return targets.filter(func(t: PokerPlayer) -> bool: return not t.is_trapped())
 		Hex.Effect.SHIELD_OVERLOAD:
-			return targets.filter(func(t: PokerPlayer) -> bool: return t.item == Item.Kind.SHIELD)
+			return targets.filter(func(t: PokerPlayer) -> bool: return t.has(Item.Kind.SHIELD))
 	return targets
 
 
-## Whether [param p] may use their item now (between hands): it has a use, they've held it
-## since an earlier hand, and (for a gun) there's someone to shoot. A hex's effect is secret until
-## it's tried, so a ready hex can always be tried, even if it then fizzles ([method hex_fizzles]).
-func can_use_item(p: PokerPlayer) -> bool:
-	if not (p.has_item() and Item.can_be_used(p.item) and p.can_use_item(hand_number)):
+## Whether [param p] may use [param item] now (between hands): they carry it, it has a use, they've
+## held it since an earlier hand, and (for a gun) there's someone to shoot. A hex's effect is secret
+## until it's tried, so a ready hex can always be tried, even if it then fizzles ([method hex_fizzles]).
+func can_use_item(p: PokerPlayer, item: HeldItem) -> bool:
+	if item == null or item not in p.items or not item.is_ready(hand_number):
 		return false
-	if p.item == Item.Kind.GUN:
+	if item.kind == Item.Kind.GUN:
 		return not gun_targets(p).is_empty()
 	return true
 
 
-## Whether [param caster]'s hex, once tried, turns out to need someone picked and nobody can be
-## (e.g. a shield overload with no shields about): it's lost without effect.
-func hex_fizzles(caster: PokerPlayer) -> bool:
-	return caster.item == Item.Kind.HEX and Hex.needs_target(caster.hex) and hex_targets(caster).is_empty()
+## Whether [param caster]'s [param hex], once tried, turns out to need someone picked and nobody
+## can be (e.g. a shield overload with no shields about): it's lost without effect.
+func hex_fizzles(caster: PokerPlayer, hex: HeldItem) -> bool:
+	return hex.kind == Item.Kind.HEX and Hex.needs_target(hex.hex) and hex_targets(caster, hex.hex).is_empty()
 
 
 func _exit_tree() -> void:
@@ -617,8 +617,8 @@ func _resolve_hand() -> void:
 
 
 ## Between hands, after items are handed out: everyone still in the game who holds an item and
-## didn't fold this hand gets a turn to use it, drop it or keep it, starting with this hand's
-## dealer and going round in play order. NPCs that keep their item pass without a pause.
+## didn't fold this hand gets a turn to use one, drop either or keep them, starting with this
+## hand's dealer and going round in play order. NPCs that keep their items pass without a pause.
 func _item_phase_turns() -> void:
 	await _wait_for_view()
 	await _drain_leeches()
@@ -632,24 +632,42 @@ func _item_phase_turns() -> void:
 	item_phase_finished.emit()
 
 
-## [param p]'s turn to use, drop or keep their item.
-func _item_turn(p: PokerPlayer) -> void:
-	var item := p.item as Item.Kind
-	var can_use := can_use_item(p)
-
-	var decision: ItemDecision
-	if p.is_human():
-		_human_item_decision = Completion.new()
-		item_turn_started.emit(p, can_use)
-		decision = await _human_item_decision.wait()
-		_human_item_decision = null
-	else:
-		decision = p.brain.decide_item(p, can_use, gun_targets(p) if item == Item.Kind.GUN else hex_targets(p))
-		if decision.action == Item.Action.KEEP:
+## [param p]'s turn to use one of their items, drop them or keep them; just for [param only] if
+## given (a magpie's catch). Using an item ends the turn, as does keeping what's left; dropping
+## one doesn't, so they carry on with whatever they still hold.
+func _item_turn(p: PokerPlayer, only: HeldItem = null) -> void:
+	while true:
+		var offered: Array[HeldItem] = []
+		for held in p.items:
+			if only == null or held == only:
+				offered.append(held)
+		if offered.is_empty() or not in_game(p):
 			return
-		item_turn_started.emit(p, can_use)
-		await _wait(npc_think_time)
-	await _apply_item_decision(p, item, can_use, decision)
+
+		var decision: ItemDecision
+		if p.is_human():
+			_human_item_decision = Completion.new()
+			item_turn_started.emit(p, offered)
+			decision = await _human_item_decision.wait()
+			_human_item_decision = null
+		else:
+			var usable: Array[HeldItem] = []
+			usable.assign(offered.filter(func(held: HeldItem) -> bool: return can_use_item(p, held)))
+			decision = p.brain.decide_item(p, offered, usable, gun_targets(p),
+				func(effect: Hex.Effect) -> Array[PokerPlayer]: return hex_targets(p, effect))
+			if decision.action == Item.Action.KEEP:
+				return
+			item_turn_started.emit(p, offered)
+			await _wait(npc_think_time)
+
+		# Anything they no longer carry (or, on a magpie's turn, anything but its catch) is a keep.
+		if decision.action == Item.Action.KEEP or decision.item not in p.items or (only and decision.item != only):
+			return
+		if decision.action == Item.Action.USE:
+			await _apply_item_use(p, decision)
+			return
+		p.remove_item(decision.item)
+		item_dropped.emit(p, decision.item.kind)
 
 
 ## When [member wait_for_next_hand] is on, waits (once a hand) for the view to finish showing the
@@ -699,60 +717,66 @@ func _drain_leeches() -> void:
 		await _wait(leech_delay)
 
 
-## Carries out an item-phase choice; anything not allowed right now counts as keeping the item.
-func _apply_item_decision(p: PokerPlayer, item: Item.Kind, can_use: bool, decision: ItemDecision) -> void:
-	match decision.action:
-		Item.Action.USE:
-			var target := decision.target
-			if can_use and item == Item.Kind.GUN and target != null and target != p and in_game(target):
-				var result := shoot(p, target)
-				shot.emit(p, target, result)
-				if target.is_shimmering():
-					await _wait(spread_delay)
-					var hits := spread_shimmer(p, target)
-					for hit: PokerPlayer in hits:
-						shot_spread.emit(target, hit, hits[hit])
-					shimmer_ended.emit(target)
-				await _wait(shot_delay)
-			elif can_use and item == Item.Kind.STIMPAK:
-				stimpak_used.emit(p, use_stimpak(p))
-				await _wait(shot_delay)
-			elif can_use and item == Item.Kind.HEX:
-				var effect := p.hex
-				if hex_fizzles(p):
-					p.item = Item.NONE
-					hex_fizzled.emit(p, effect)
-					await _wait(hex_fizzle_delay)
-				elif cast_hex(p, target):
-					hex_cast.emit(p, effect, target if Hex.needs_target(effect) else null)
-					if effect == Hex.Effect.MAGPIE:
-						await _send_magpie(p, target)
-						return
-					if effect == Hex.Effect.SHIELD_OVERLOAD:
-						await _overload_target(p, target)
-						return
-					if effect == Hex.Effect.LIGHTNING:
-						for struck in roll_lightning(p):
-							await _wait(lightning_delay)
-							lightning_struck.emit(p, struck, strike_lightning(p, struck))
-					await _wait(shot_delay)
-		Item.Action.DROP:
-			p.item = Item.NONE
-			item_dropped.emit(p, item)
+## Uses the item [param decision] picked; anything not allowed right now does nothing, keeping it.
+func _apply_item_use(p: PokerPlayer, decision: ItemDecision) -> void:
+	var item := decision.item
+	var target := decision.target
+	if not can_use_item(p, item):
+		return
+	match item.kind:
+		Item.Kind.GUN:
+			if target == null or target == p or not in_game(target):
+				return
+			var result := shoot(p, target, item)
+			shot.emit(p, target, result)
+			if target.is_shimmering():
+				await _wait(spread_delay)
+				var hits := spread_shimmer(p, target)
+				for hit: PokerPlayer in hits:
+					shot_spread.emit(target, hit, hits[hit])
+				shimmer_ended.emit(target)
+			await _wait(shot_delay)
+		Item.Kind.STIMPAK:
+			stimpak_used.emit(p, use_stimpak(p, item))
+			await _wait(shot_delay)
+		Item.Kind.HEX:
+			var effect := item.hex
+			var slot := p.items.find(item)
+			if hex_fizzles(p, item):
+				p.remove_item(item)
+				hex_fizzled.emit(p, effect, slot)
+				await _wait(hex_fizzle_delay)
+				return
+			if not cast_hex(p, item, target):
+				return
+			hex_cast.emit(p, effect, target if Hex.needs_target(effect) else null, slot)
+			match effect:
+				Hex.Effect.MAGPIE:
+					# Whichever item was picked, if [param target] still has it; otherwise their only one.
+					var steal := decision.steal if decision.steal in target.items else target.items[0]
+					await _send_magpie(p, target, steal)
+					return
+				Hex.Effect.SHIELD_OVERLOAD:
+					await _overload_target(p, target)
+					return
+				Hex.Effect.LIGHTNING:
+					for struck in roll_lightning(p):
+						await _wait(lightning_delay)
+						lightning_struck.emit(p, struck, strike_lightning(p, struck))
+			await _wait(shot_delay)
 
 
-## After the cast, [param caster]'s magpie swoops on [param target]'s item and carries it back;
-## then [param caster] gets another item turn, to use or drop it.
-func _send_magpie(caster: PokerPlayer, target: PokerPlayer) -> void:
+## After the cast, [param caster]'s magpie swoops on [param target]'s [param item] and carries it
+## back; then [param caster] gets another item turn, to use or drop it.
+func _send_magpie(caster: PokerPlayer, target: PokerPlayer, item: HeldItem) -> void:
 	await _wait(magpie_delay)
-	magpie_swooped.emit(caster, target)
+	magpie_swooped.emit(caster, target, item)
 	await _wait(magpie_swoop_delay)
-	var item := steal_item(caster, target)
-	if item == Item.NONE:
+	if steal_item(caster, target, item) == null:
 		return
 	item_stolen.emit(caster, target, item)
 	await _wait(magpie_carry_delay)
-	await _item_turn(caster)
+	await _item_turn(caster, item)
 
 
 ## After the cast, [param target]'s avatar crackles with electricity, then explodes.
@@ -765,14 +789,13 @@ func _overload_target(caster: PokerPlayer, target: PokerPlayer) -> void:
 	await _wait(explosion_delay)
 
 
-## End of hand: each player still in the game with free hands may pick up a random item.
-## Players already carrying one don't roll.
+## End of hand: each player still in the game with a free hand may pick up a random item.
+## Players whose hands are full don't roll.
 func _hand_out_items() -> void:
 	for p in players:
-		if p.chips <= 0 or p.has_item() or randf() >= item_chance:
+		if p.chips <= 0 or not p.has_free_hand() or randf() >= item_chance:
 			continue
-		give_item(p, Item.random())
-		item_gained.emit(p, p.item)
+		item_gained.emit(p, give_item(p, Item.random()).kind)
 
 
 func _clear_bets() -> void:
