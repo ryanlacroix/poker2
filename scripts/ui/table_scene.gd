@@ -758,7 +758,8 @@ func _announce_items() -> void:
 	_item_news.clear()
 
 
-## The human's item turn: NEXT HAND (keep it) and DROP always, USE as well when the item is ready.
+## The human's item turn: NEXT HAND (keep it) and DROP always, USE as well when the item is ready
+## (or it's a ready shield overload with nobody to cast it on: see [method _no_shields_to_overload]).
 func _show_item_buttons(can_use: bool) -> void:
 	_hide_item_buttons()
 	var human := _table.players[0]
@@ -768,10 +769,18 @@ func _show_item_buttons(can_use: bool) -> void:
 	_show_next_hand()
 	_drop_item_button.text = "DROP %s" % item_name
 	_drop_item_button.visible = true
-	if can_use:
+	if can_use or _no_shields_to_overload():
 		_use_item_button.text = "USE %s" % item_name
 		_use_item_button.visible = true
 	# NEXT HAND has focus, so Enter / Space keep it and move on.
+
+
+## The human holds a ready shield overload but nobody's carrying a shield: its modal still opens,
+## but only offers to drop it.
+func _no_shields_to_overload() -> bool:
+	var human := _table.players[0]
+	return human.item == Item.Kind.HEX and human.hex == Hex.Effect.SHIELD_OVERLOAD \
+		and human.can_use_item(_table.hand_number) and _table.hex_targets(human).is_empty()
 
 
 func _hide_item_buttons() -> void:
@@ -929,7 +938,8 @@ func _enter_target_mode(players: Array[PokerPlayer], with_gun: bool, hint: Strin
 
 
 ## The hex is revealed: its name, what it does, and CAST (there's no backing out). Casting one
-## that needs a target then has the human pick who.
+## that needs a target then has the human pick who. A shield overload with no shields about
+## offers to drop it instead.
 func _show_hex_modal(effect: Hex.Effect) -> void:
 	var box := VBoxContainer.new()
 	var title := Label.new()
@@ -951,11 +961,14 @@ func _show_hex_modal(effect: Hex.Effect) -> void:
 	detail.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	detail.custom_minimum_size.x = HEX_MODAL_TEXT_WIDTH
 	box.add_child(detail)
-	var cast := _new_button("CAST")
+	var no_target := _no_shields_to_overload()
+	var cast := _new_button("NO SHIELDED PLAYERS - DROP HEX" if no_target else "CAST")
 	cast.pressed.connect(func() -> void:
 		_hex_modal.queue_free()
 		_hex_modal = null
-		if Hex.needs_target(effect):
+		if no_target:
+			_submit_item_decision(ItemDecision.new(Item.Action.DROP))
+		elif Hex.needs_target(effect):
 			_enter_target_mode(_table.hex_targets(_table.players[0]), false, "PICK A PLAYER")
 		else:
 			_submit_item_decision(ItemDecision.new(Item.Action.USE)))
