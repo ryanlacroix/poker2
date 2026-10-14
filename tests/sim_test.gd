@@ -293,7 +293,7 @@ func _test_magpie() -> void:
 	table.hand_number = 5
 	caster.item = Item.Kind.HEX
 	caster.hex = Hex.Effect.MAGPIE
-	_check(not table.can_use_item(caster), "a magpie can't be cast when nobody else has an item")
+	_check(table.can_use_item(caster) and table.hex_fizzles(caster), "a magpie can be tried when nobody else has an item, but fizzles")
 	shielded.item = Item.Kind.SHIELD
 	hexed.item = Item.Kind.HEX
 	hexed.hex = Hex.Effect.LIGHTNING
@@ -359,15 +359,27 @@ func _test_shield_overload() -> void:
 	caster.item = Item.Kind.HEX
 	caster.hex = Hex.Effect.SHIELD_OVERLOAD
 	caster.item_gained_on_hand = -1
-	_check(table.hex_targets(caster).is_empty() and not table.can_use_item(caster), "a shield overload can't be cast with no shields about")
+	_check(table.can_use_item(caster) and table.hex_fizzles(caster), "a shield overload can be tried with no shields about, but fizzles")
+	# An NPC doesn't know it holds a dud: a bold one tries it anyway, and loses it.
+	var bold := NpcBrain.new()
+	bold.aggression = 1
+	var tried := bold.decide_item(caster, true, table.hex_targets(caster))
+	_check(tried.action == Item.Action.USE, "an NPC tries a hex without knowing it will fizzle")
+	var fizzled := []
+	table.hex_fizzled.connect(func(p: PokerPlayer, effect: Hex.Effect) -> void: fizzled.append([p, effect]))
+	table.shot_delay = 0
+	add_child(table)
+	table._apply_item_decision(caster, Item.Kind.HEX, true, tried)
+	_check(not caster.has_item() and fizzled == [[caster, Hex.Effect.SHIELD_OVERLOAD]], "a hex that fizzles is lost")
+	remove_child(table)
+	caster.item = Item.Kind.HEX
 
 	victim.item = Item.Kind.SHIELD
 	rich.item = Item.Kind.SHIELD
 	richer.item = Item.Kind.GUN
 	var targets := table.hex_targets(caster)
 	_check(targets.size() == 2 and victim in targets and rich in targets, "a shield overload can only pick players carrying a shield")
-	var bold := NpcBrain.new()
-	bold.aggression = 1
+	_check(not table.hex_fizzles(caster), "a shield overload with shields about doesn't fizzle")
 	_check(bold.decide_item(caster, true, targets).target == rich, "an NPC overloads the biggest stack with a shield")
 
 	_check(not table.cast_hex(caster, caster) and caster.has_item(), "a shield overload can't be cast on yourself")

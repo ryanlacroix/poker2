@@ -54,6 +54,9 @@ signal bomb_dropped(victim: PokerPlayer)
 signal overload_charging(caster: PokerPlayer, target: PokerPlayer)
 ## The shield overload [param caster] cast blew up [param target], taking all their hearts.
 signal overload_exploded(caster: PokerPlayer, target: PokerPlayer)
+## [param caster] tried to cast their hex, but it turned out to be [param effect] and nobody could
+## be picked for it (see [method hex_fizzles]), so it's lost.
+signal hex_fizzled(caster: PokerPlayer, effect: Hex.Effect)
 signal item_dropped(player: PokerPlayer, item: Item.Kind)
 signal item_phase_finished
 ## Emitted between hands when [member wait_for_next_hand] is on; call [method continue_to_next_hand].
@@ -344,14 +347,20 @@ func hex_targets(caster: PokerPlayer) -> Array[PokerPlayer]:
 
 
 ## Whether [param p] may use their item now (between hands): it has a use, they've held it
-## since an earlier hand, and (for a gun, or a hex cast on someone) there's someone to pick.
+## since an earlier hand, and (for a gun) there's someone to shoot. A hex's effect is secret until
+## it's tried, so a ready hex can always be tried, even if it then fizzles ([method hex_fizzles]).
 func can_use_item(p: PokerPlayer) -> bool:
 	if not (p.has_item() and Item.can_be_used(p.item) and p.can_use_item(hand_number)):
 		return false
-	match p.item:
-		Item.Kind.GUN: return not gun_targets(p).is_empty()
-		Item.Kind.HEX: return not Hex.needs_target(p.hex) or not hex_targets(p).is_empty()
+	if p.item == Item.Kind.GUN:
+		return not gun_targets(p).is_empty()
 	return true
+
+
+## Whether [param caster]'s hex, once tried, turns out to need someone picked and nobody can be
+## (e.g. a shield overload with no shields about): it's lost without effect.
+func hex_fizzles(caster: PokerPlayer) -> bool:
+	return caster.item == Item.Kind.HEX and Hex.needs_target(caster.hex) and hex_targets(caster).is_empty()
 
 
 func _exit_tree() -> void:
@@ -708,7 +717,11 @@ func _apply_item_decision(p: PokerPlayer, item: Item.Kind, can_use: bool, decisi
 				await _wait(shot_delay)
 			elif can_use and item == Item.Kind.HEX:
 				var effect := p.hex
-				if cast_hex(p, target):
+				if hex_fizzles(p):
+					p.item = Item.NONE
+					hex_fizzled.emit(p, effect)
+					await _wait(shot_delay)
+				elif cast_hex(p, target):
 					hex_cast.emit(p, effect, target if Hex.needs_target(effect) else null)
 					if effect == Hex.Effect.MAGPIE:
 						await _send_magpie(p, target)

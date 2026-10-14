@@ -64,7 +64,8 @@ func _raise(ctx: DecisionContext, equity: float) -> Decision:
 ## Item phase: fire a ready gun (more likely the more aggressive), and timid players who
 ## won't fire it drop it to try for a shield instead. A shield is always worth keeping, and a
 ## stimpak is saved until it would win back a heart. A ready hex is cast about as readily as a
-## gun is fired. [param targets] are who the gun or hex could be used on.
+## gun is fired, without knowing what it does (it may fizzle). [param targets] are who the gun or
+## hex could be used on; for a hex they only matter once it's being cast.
 func decide_item(me: PokerPlayer, can_use: bool, targets: Array[PokerPlayer]) -> ItemDecision:
 	if me.item == Item.Kind.STIMPAK:
 		return ItemDecision.new(Item.Action.USE if can_use and me.is_hurt() else Item.Action.KEEP)

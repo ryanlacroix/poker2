@@ -715,6 +715,12 @@ func _connect_table() -> void:
 			seat.set_status("WASTED", PixelArt.PAPER)
 		seat.refresh())
 	_table.hex_cast.connect(_on_hex_cast)
+	_table.hex_fizzled.connect(func(caster: PokerPlayer, effect: Hex.Effect) -> void:
+		_seats[caster.seat].set_status("HEX FIZZLED", PixelArt.PAPER)
+		_seats[caster.seat].refresh() # the hex is lost
+		if not caster.is_human():
+			_notices.enqueue("%s's %s fizzled: %s" % [caster.display_name,
+				Hex.display_name(effect).to_lower(), _no_target_reason(effect).to_lower()]))
 	_table.shot_spread.connect(_on_shot_spread)
 	_table.shimmer_ended.connect(func(player: PokerPlayer) -> void:
 		_seats[player.seat].refresh())
@@ -758,8 +764,7 @@ func _announce_items() -> void:
 	_item_news.clear()
 
 
-## The human's item turn: NEXT HAND (keep it) and DROP always, USE as well when the item is ready
-## (or it's a ready shield overload with nobody to cast it on: see [method _no_shields_to_overload]).
+## The human's item turn: NEXT HAND (keep it) and DROP always, USE as well when the item is ready.
 func _show_item_buttons(can_use: bool) -> void:
 	_hide_item_buttons()
 	var human := _table.players[0]
@@ -769,18 +774,10 @@ func _show_item_buttons(can_use: bool) -> void:
 	_show_next_hand()
 	_drop_item_button.text = "DROP %s" % item_name
 	_drop_item_button.visible = true
-	if can_use or _no_shields_to_overload():
+	if can_use:
 		_use_item_button.text = "USE %s" % item_name
 		_use_item_button.visible = true
 	# NEXT HAND has focus, so Enter / Space keep it and move on.
-
-
-## The human holds a ready shield overload but nobody's carrying a shield: its modal still opens,
-## but only offers to drop it.
-func _no_shields_to_overload() -> bool:
-	var human := _table.players[0]
-	return human.item == Item.Kind.HEX and human.hex == Hex.Effect.SHIELD_OVERLOAD \
-		and human.can_use_item(_table.hand_number) and _table.hex_targets(human).is_empty()
 
 
 func _hide_item_buttons() -> void:
@@ -938,8 +935,8 @@ func _enter_target_mode(players: Array[PokerPlayer], with_gun: bool, hint: Strin
 
 
 ## The hex is revealed: its name, what it does, and CAST (there's no backing out). Casting one
-## that needs a target then has the human pick who. A shield overload with no shields about
-## offers to drop it instead.
+## that needs a target then has the human pick who. One with nobody to pick (see
+## [method PokerTable.hex_fizzles]) only offers to let it go, losing it.
 func _show_hex_modal(effect: Hex.Effect) -> void:
 	var box := VBoxContainer.new()
 	var title := Label.new()
@@ -961,20 +958,27 @@ func _show_hex_modal(effect: Hex.Effect) -> void:
 	detail.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	detail.custom_minimum_size.x = HEX_MODAL_TEXT_WIDTH
 	box.add_child(detail)
-	var no_target := _no_shields_to_overload()
-	var cast := _new_button("NO SHIELDED PLAYERS - DROP HEX" if no_target else "CAST")
+	var fizzles := _table.hex_fizzles(_table.players[0])
+	var cast := _new_button("%s - DROP HEX" % _no_target_reason(effect) if fizzles else "CAST")
 	cast.pressed.connect(func() -> void:
 		_hex_modal.queue_free()
 		_hex_modal = null
-		if no_target:
-			_submit_item_decision(ItemDecision.new(Item.Action.DROP))
-		elif Hex.needs_target(effect):
+		if Hex.needs_target(effect) and not fizzles:
 			_enter_target_mode(_table.hex_targets(_table.players[0]), false, "PICK A PLAYER")
 		else:
 			_submit_item_decision(ItemDecision.new(Item.Action.USE)))
 	box.add_child(cast)
 	_hex_modal = _show_modal(box)
 	cast.grab_focus()
+
+
+## Why nobody can be picked for [param effect], on the hex modal's button when it fizzles.
+static func _no_target_reason(effect: Hex.Effect) -> String:
+	match effect:
+		Hex.Effect.SHIELD_OVERLOAD: return "NO SHIELDED PLAYERS"
+		Hex.Effect.MAGPIE: return "NO ITEMS TO STEAL"
+		Hex.Effect.BOOM_TRAP: return "NO ONE LEFT TO TRAP"
+	return "NO ONE TO HEX"
 
 
 ## The human picked who to shoot or hex; the table carries it out.
