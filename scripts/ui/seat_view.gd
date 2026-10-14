@@ -21,6 +21,24 @@ const DEALER_SIZE := 9
 const HIT_SECONDS := 0.6
 ## How long a bomb that falls off takes to drop away and vanish.
 const BOMB_DROP_SECONDS := 0.6
+## A hex that fizzles: its icon sputters out over [constant HEX_SPUTTER_SECONDS], its pentagram's
+## pixels guttering out one by one before the plate fades, while a wisp of smoke curls up off it
+## and drifts away, gone by [constant HEX_FIZZLE_SECONDS].
+const HEX_FIZZLE_SECONDS := 2.5
+const HEX_SPUTTER_SECONDS := 1.4
+## Of the sputter, how long the bare plate takes to fade at the end.
+const HEX_PLATE_FADE_SECONDS := 0.3
+## Smoke puffs: how many curl up off the icon while it sputters, how long each lasts, how fast it
+## rises (pixels a second), how far it sways side to side, and how big a puff starts and ends.
+const SMOKE_PUFFS := 26
+const SMOKE_PUFF_SECONDS := 1.1
+const SMOKE_RISE := 34.0
+const SMOKE_SWAY := 9.0
+const SMOKE_PUFF_SIZE := Vector2(2, 6)
+const SMOKE_COLOR := Color("d4d0d8")
+const SMOKE_SHADE := Color("7c7884")
+## A dying ember's colour, between the hex's red and going out.
+const EMBER_COLOR := Color("6a1414")
 ## How long the gold your-turn outline takes to fade in or out.
 const ACTIVE_FADE_SECONDS := 0.1
 ## Tint for the text and hearts of a seat whose player is OUT or RIP.
@@ -74,6 +92,8 @@ var _hex_glow_seconds := 0.0
 var _hex_glow_one_sided := false # the caster's glow: only on the side facing the table
 # When the bomb fell off (-1 = it hasn't).
 var _bomb_dropped_at := -1.0
+# When the hex fizzled (-1 = it hasn't).
+var _hex_fizzled_at := -1.0
 ## Leaves the carried item off the portrait, while a magpie is still bringing it over.
 var item_hidden := false:
 	set(value):
@@ -303,13 +323,28 @@ func _bomb_drop_time() -> float:
 	return t if t < BOMB_DROP_SECONDS else -1.0
 
 
+## The hex this player carried is gone, cast or fizzled: its icon sputters out and smokes over
+## [constant HEX_FIZZLE_SECONDS].
+func fizzle_hex() -> void:
+	_hex_fizzled_at = Time.get_ticks_msec() / 1000.0
+	_update_processing()
+
+
+## Seconds since the hex fizzled, or -1 once its smoke is gone (or if it hasn't fizzled).
+func _hex_fizzle_time() -> float:
+	if _hex_fizzled_at < 0:
+		return -1.0
+	var t := Time.get_ticks_msec() / 1000.0 - _hex_fizzled_at
+	return t if t < HEX_FIZZLE_SECONDS else -1.0
+
+
 func _hit_active() -> bool:
 	return _hit_at >= 0 and Time.get_ticks_msec() / 1000.0 - _hit_at < HIT_SECONDS
 
 
 func _animating() -> bool:
 	return _is_winner or _is_target or _hit_active() or _hex_glow_progress() >= 0 or _shimmering() or _leeched() \
-		or _trapped() or _bomb_drop_time() >= 0
+		or _trapped() or _bomb_drop_time() >= 0 or _hex_fizzle_time() >= 0
 
 
 ## Under a shimmer and still in the game (a shimmer on someone knocked out stops showing).
@@ -448,6 +483,8 @@ func _draw_portrait(c: CanvasItem) -> void:
 	if _leeched():
 		_draw_leech_glow(c, frame)
 	_draw_item(c, frame)
+	if _hex_fizzle_time() >= 0:
+		_draw_hex_fizzle(c, frame, _hex_fizzle_time())
 	if _leeched():
 		_draw_leech(c, frame)
 	if _trapped():
@@ -488,6 +525,63 @@ func _draw_item(c: CanvasItem, frame: Rect2) -> void:
 	c.draw_rect(plate, PixelArt.INK)
 	c.draw_rect(plate.grow(-1), InterfaceStyle.current.button_normal)
 	PixelArt.draw_colored(c, art[0], art[1], plate.position + Vector2(2, 2), 1)
+
+
+## The hex's icon, [param t] seconds after it was cast or fizzled (it's gone from [member player] by now):
+## each pixel of the pentagram gutters out at its own moment, flickering down to a dull ember
+## first, then the bare plate fades. Wisps of smoke curl up from all along its top edge, swaying
+## as they rise, growing and thinning out.
+func _draw_hex_fizzle(c: CanvasItem, frame: Rect2, t: float) -> void:
+	var icon := PixelArt.HEX_ICON
+	var plate := _item_plate(frame, icon)
+	var plate_fade := clampf((HEX_SPUTTER_SECONDS - t) / HEX_PLATE_FADE_SECONDS, 0.0, 1.0)
+	if plate_fade > 0:
+		c.draw_rect(plate.grow(1), Color(InterfaceStyle.current.trim_dark, plate_fade))
+		c.draw_rect(plate, Color(PixelArt.INK, plate_fade))
+		c.draw_rect(plate.grow(-1), Color(InterfaceStyle.current.button_normal, plate_fade))
+		var black: Color = PixelArt.HEX_COLORS.K
+		var red: Color = PixelArt.HEX_COLORS.R
+		var gutter_by := HEX_SPUTTER_SECONDS - HEX_PLATE_FADE_SECONDS
+		for y in icon.size():
+			for x in icon[y].length():
+				var at := Rect2(plate.position + Vector2(2 + x, 2 + y), Vector2.ONE)
+				if icon[y][x] != "R":
+					c.draw_rect(at, Color(black, plate_fade))
+					continue
+				# Each pixel goes out at its own moment, guttering for a while before it does.
+				var out_at := gutter_by * (0.3 + 0.7 * _pixel_noise(x, y))
+				var k := t / out_at
+				var color := black
+				if k < 1.0:
+					var flicker := int(t / 0.06 + x * 3 + y * 7) % 3 == 0
+					color = red.lerp(EMBER_COLOR, k)
+					if flicker and k > 0.3:
+						color = EMBER_COLOR.lerp(black, 0.5)
+				c.draw_rect(at, Color(color, plate_fade))
+	for i in SMOKE_PUFFS:
+		var born := HEX_SPUTTER_SECONDS * i / SMOKE_PUFFS
+		var age := t - born
+		if age < 0 or age >= SMOKE_PUFF_SECONDS:
+			continue
+		var k := age / SMOKE_PUFF_SECONDS
+		# The whole wisp curls one way then the other as it rises, each puff following it.
+		var sway := sin(t * 2.5 - age * 4.0) * SMOKE_SWAY * k
+		var drift := Vector2(sway + (i % 3 - 1) * 1.5 * k, -SMOKE_RISE * age)
+		var puff := roundf(lerpf(SMOKE_PUFF_SIZE.x, SMOKE_PUFF_SIZE.y, k))
+		var alpha := 0.5 * (1.0 - k * k)
+		# Puffs rise from all along the plate's top, spread evenly (golden-ratio steps) across it.
+		var along := fmod(i * 0.618034, 1.0)
+		var source := Vector2(plate.position.x + 1 + (plate.size.x - 2) * along, plate.position.y)
+		var at := (source + drift - Vector2.ONE * puff / 2).floor()
+		# A darker underside, so it reads against a pale portrait as well as the dark seat.
+		c.draw_rect(Rect2(at + Vector2(1, 1), Vector2.ONE * puff), Color(SMOKE_SHADE, alpha * 0.6))
+		c.draw_rect(Rect2(at, Vector2.ONE * puff), Color(SMOKE_COLOR, alpha))
+
+
+## A steady pseudo-random 0-1 for the icon pixel at [param x], [param y].
+static func _pixel_noise(x: int, y: int) -> float:
+	var n := sin(x * 12.9898 + y * 78.233) * 43758.5453
+	return n - floorf(n)
 
 
 ## Where the plate for [param icon] sits on the portrait [param frame].

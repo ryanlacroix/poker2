@@ -94,6 +94,7 @@ func _play_hands(hands: int, item_chance: float, players: Array[PokerPlayer], do
 	table.bomb_drop_delay = 0
 	table.overload_delay = 0
 	table.overload_charge_delay = 0
+	table.hex_fizzle_delay = 0
 	table.max_hands = hands
 	table.item_chance = item_chance
 	add_child(table)
@@ -367,7 +368,7 @@ func _test_shield_overload() -> void:
 	_check(tried.action == Item.Action.USE, "an NPC tries a hex without knowing it will fizzle")
 	var fizzled := []
 	table.hex_fizzled.connect(func(p: PokerPlayer, effect: Hex.Effect) -> void: fizzled.append([p, effect]))
-	table.shot_delay = 0
+	table.hex_fizzle_delay = 0
 	add_child(table)
 	table._apply_item_decision(caster, Item.Kind.HEX, true, tried)
 	_check(not caster.has_item() and fizzled == [[caster, Hex.Effect.SHIELD_OVERLOAD]], "a hex that fizzles is lost")

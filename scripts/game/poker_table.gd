@@ -94,6 +94,8 @@ var bomb_drop_delay := 0.6
 ## then how long it crackles before exploding (the explosion then takes [member explosion_delay]).
 var overload_delay := 1.0
 var overload_charge_delay := 1.0
+## Pause while a hex that fizzled sputters out.
+var hex_fizzle_delay := 0.9
 ## 0 = unlimited.
 var max_hands := 0
 ## Pause after each hand for the view: before the item phase (until [method begin_item_phase])
@@ -720,7 +722,7 @@ func _apply_item_decision(p: PokerPlayer, item: Item.Kind, can_use: bool, decisi
 				if hex_fizzles(p):
 					p.item = Item.NONE
 					hex_fizzled.emit(p, effect)
-					await _wait(shot_delay)
+					await _wait(hex_fizzle_delay)
 				elif cast_hex(p, target):
 					hex_cast.emit(p, effect, target if Hex.needs_target(effect) else null)
 					if effect == Hex.Effect.MAGPIE:

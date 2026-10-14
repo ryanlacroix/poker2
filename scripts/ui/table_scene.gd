@@ -159,6 +159,7 @@ func _ready() -> void:
 	_table.bomb_drop_delay = SeatView.BOMB_DROP_SECONDS
 	_table.overload_delay = HexMist.DARKEN_SECONDS + HexMist.DRIFT_SECONDS
 	_table.overload_charge_delay = OverloadSparks.SECONDS
+	_table.hex_fizzle_delay = SeatView.HEX_FIZZLE_SECONDS
 	_table.wait_for_next_hand = true
 	add_child(_table)
 	_table.setup(GameConfig.create_players())
@@ -433,6 +434,7 @@ func _build_ui() -> void:
 	_debug_menu.give_npcs_stimpaks.connect(_debug_give_npcs_stimpaks)
 	_debug_menu.give_npc_shield.connect(_debug_give_npc_shield)
 	_debug_menu.give_chips.connect(_debug_give_chips)
+	_debug_menu.fizzle_hexes.connect(_debug_fizzle_hexes)
 	_debug_menu.explode_npc.connect(_debug_explode_npc)
 	_debug_menu.set_npc_chips.connect(_debug_set_npc_chips)
 	_debug_menu.lose_heart.connect(_debug_lose_heart)
@@ -716,6 +718,7 @@ func _connect_table() -> void:
 		seat.refresh())
 	_table.hex_cast.connect(_on_hex_cast)
 	_table.hex_fizzled.connect(func(caster: PokerPlayer, effect: Hex.Effect) -> void:
+		_seats[caster.seat].fizzle_hex()
 		_seats[caster.seat].set_status("HEX FIZZLED", PixelArt.PAPER)
 		_seats[caster.seat].refresh() # the hex is lost
 		if not caster.is_human():
@@ -860,6 +863,18 @@ func _debug_give_npc_shield() -> void:
 	_table.give_item(npc, Item.Kind.SHIELD)
 	npc.item_gained_on_hand = _table.hand_number - 1
 	_seats[npc.seat].refresh()
+
+
+## Debug: every hex anyone's carrying fizzles, as if they'd tried it with nobody to pick. Not the
+## human's while its modal is open.
+func _debug_fizzle_hexes() -> void:
+	for p in _table.players:
+		if p.item != Item.Kind.HEX or (p.is_human() and _hex_modal):
+			continue
+		p.item = Item.NONE
+		_table.hex_fizzled.emit(p, p.hex)
+	if _human_item_turn and not _targeting:
+		_show_item_buttons(_table.can_use_item(_table.players[0]))
 
 
 ## Debug: blows up a random NPC still in the game, as if a boom trap went off on them. Their
@@ -1020,7 +1035,8 @@ func _on_shot(shooter: PokerPlayer, target_player: PokerPlayer, result: Item.Sho
 
 
 ## A hex was cast: the table dims under a blood-red mist while its target glows the same red (and
-## its caster, from the side facing the table), the caster's status names it, and a shimmer lights up its target.
+## its caster, from the side facing the table), the caster's status names it, the used-up hex
+## sputters out on the caster's portrait, and a shimmer lights up its target.
 func _on_hex_cast(caster: PokerPlayer, effect: Hex.Effect, target: PokerPlayer) -> void:
 	# First child: over the table's own drawing, under the seats, cards and buttons.
 	var mist := HexMist.new()
@@ -1030,7 +1046,8 @@ func _on_hex_cast(caster: PokerPlayer, effect: Hex.Effect, target: PokerPlayer) 
 		_seats[target.seat].hex_glow(HexMist.DRIFT_SECONDS)
 	_seats[caster.seat].hex_glow(HexMist.DRIFT_SECONDS, true)
 	_seats[caster.seat].set_status("CAST %s" % Hex.display_name(effect), PixelArt.HEART_RED)
-	_seats[caster.seat].refresh() # the hex is used up
+	_seats[caster.seat].fizzle_hex() # the hex is used up
+	_seats[caster.seat].refresh()
 	match effect:
 		Hex.Effect.SHIMMER:
 			_seats[target.seat].set_status("SHIMMERING", Color.WHITE)

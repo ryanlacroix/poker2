@@ -18,6 +18,8 @@ signal lose_heart
 ## Emitted when SET NPC $50 is picked (the table then has the human pick which); the menu
 ## closes itself.
 signal set_npc_chips(amount: int)
+## Emitted when FIZZLE ALL HEXES is picked; the menu closes itself.
+signal fizzle_hexes
 ## Emitted when EXPLODE NPC is picked; the menu closes itself.
 signal explode_npc
 ## Emitted when WIN TABLE is picked (shows the win screen, to reach the next table); the
@@ -77,6 +79,7 @@ func _ready() -> void:
 		_add_button(grid, "GIVE %s HEX" % Hex.display_name(effect), _picked(give_hex.emit.bind(effect)))
 	_add_button(grid, "GIVE $%d" % GIVE_CHIPS, _picked(give_chips.emit.bind(GIVE_CHIPS)))
 	_add_button(grid, "LOSE A HEART", _picked(lose_heart.emit))
+	_add_button(grid, "FIZZLE ALL HEXES", _picked(fizzle_hexes.emit))
 	_add_button(grid, "EXPLODE NPC", _picked(explode_npc.emit))
 	_add_button(grid, "SET NPC $%d" % SET_NPC_CHIPS, _picked(set_npc_chips.emit.bind(SET_NPC_CHIPS)))
 	_add_button(grid, "WIN TABLE", _picked(win_table.emit))
