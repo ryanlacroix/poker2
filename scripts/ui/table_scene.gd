@@ -61,6 +61,8 @@ const SHAKE_PIXELS := 10
 const SHAKE_SECONDS := 0.2
 ## A boom trap's blast shakes the screen twice as hard, for this long.
 const BOOM_SHAKE_SECONDS := 0.7
+## How far, in whole pixels, a shield-overloading seat judders as the electricity builds.
+const OVERLOAD_JUDDER_PIXELS := 3
 ## Gap between the brass studs along the rail.
 const RAIL_STUD_SPACING := 20.0
 
@@ -155,6 +157,8 @@ func _ready() -> void:
 	_table.magpie_carry_delay = MagpieBird.CARRY_SECONDS
 	_table.explosion_delay = BoomExplosion.SECONDS
 	_table.bomb_drop_delay = SeatView.BOMB_DROP_SECONDS
+	_table.overload_delay = HexMist.DARKEN_SECONDS + HexMist.DRIFT_SECONDS
+	_table.overload_charge_delay = OverloadSparks.SECONDS
 	_table.wait_for_next_hand = true
 	add_child(_table)
 	_table.setup(GameConfig.create_players())
@@ -427,6 +431,7 @@ func _build_ui() -> void:
 	_debug_menu.give_item.connect(_debug_give_item)
 	_debug_menu.give_hex.connect(_debug_give_hex)
 	_debug_menu.give_npcs_stimpaks.connect(_debug_give_npcs_stimpaks)
+	_debug_menu.give_npc_shield.connect(_debug_give_npc_shield)
 	_debug_menu.give_chips.connect(_debug_give_chips)
 	_debug_menu.explode_npc.connect(_debug_explode_npc)
 	_debug_menu.set_npc_chips.connect(_debug_set_npc_chips)
@@ -718,6 +723,8 @@ func _connect_table() -> void:
 	_table.magpie_swooped.connect(_on_magpie_swooped)
 	_table.item_stolen.connect(_on_item_stolen)
 	_table.bomb_exploded.connect(_on_bomb_exploded)
+	_table.overload_charging.connect(_on_overload_charging)
+	_table.overload_exploded.connect(_on_overload_exploded)
 	_table.bomb_dropped.connect(func(player: PokerPlayer) -> void:
 		_seats[player.seat].drop_bomb()
 		_seats[player.seat].set_status("BOMB FELL OFF", PixelArt.HEAL_GREEN)
@@ -834,6 +841,19 @@ func _debug_give_npcs_stimpaks() -> void:
 		_table.give_item(p, Item.Kind.STIMPAK)
 		p.item_gained_on_hand = _table.hand_number - 1
 		_seats[p.seat].refresh()
+
+
+## Debug: hands a random NPC still in the game, and not already carrying a shield, a shield,
+## replacing whatever they carry.
+func _debug_give_npc_shield() -> void:
+	var npcs := _table.players.filter(func(p: PokerPlayer) -> bool:
+		return not p.is_human() and PokerTable.in_game(p) and p.item != Item.Kind.SHIELD)
+	if npcs.is_empty():
+		return
+	var npc: PokerPlayer = npcs.pick_random()
+	_table.give_item(npc, Item.Kind.SHIELD)
+	npc.item_gained_on_hand = _table.hand_number - 1
+	_seats[npc.seat].refresh()
 
 
 ## Debug: blows up a random NPC still in the game, as if a boom trap went off on them. Their
@@ -1061,9 +1081,15 @@ func _on_item_stolen(caster: PokerPlayer, target: PokerPlayer, item: Item.Kind) 
 	_seats[caster.seat].refresh()
 
 
-## A boom trap went off on [param victim]: a huge blast over their seat that shakes the whole
-## screen. Once the fireball has swallowed it, the seat is gone for good, leaving a burn mark.
+## A boom trap went off on [param victim]: see [method _blow_up_seat].
 func _on_bomb_exploded(victim: PokerPlayer, _caster: PokerPlayer) -> void:
+	_blow_up_seat(victim)
+	_notices.enqueue("%s blew up!" % victim.display_name)
+
+
+## A huge blast over [param victim]'s seat that shakes the whole screen. Once the fireball has
+## swallowed it, the seat is gone for good, leaving a burn mark.
+func _blow_up_seat(victim: PokerPlayer) -> void:
 	var seat := _seats[victim.seat]
 	var boom := BoomExplosion.new()
 	boom.center = seat.position + seat.size / 2
@@ -1083,7 +1109,31 @@ func _on_bomb_exploded(victim: PokerPlayer, _caster: PokerPlayer) -> void:
 		move_child(mark, 0))
 	UiTheme.add_at(self, boom, Vector2.ZERO, get_viewport_rect().size)
 	_shake_screen(SHAKE_PIXELS * 2, BOOM_SHAKE_SECONDS)
-	_notices.enqueue("%s blew up!" % victim.display_name)
+
+
+## A shield overload starts on [param target_player]: electricity shoots out of their portrait
+## and their seat judders harder and harder, until it explodes ([method _on_overload_exploded]).
+func _on_overload_charging(_caster: PokerPlayer, target_player: PokerPlayer) -> void:
+	var seat := _seats[target_player.seat]
+	var sparks := OverloadSparks.new()
+	sparks.seat = seat
+	# Over everything on the table, like a lightning bolt.
+	sparks.z_index = LIGHTNING_Z
+	UiTheme.add_at(self, sparks, Vector2.ZERO, get_viewport_rect().size)
+	seat.set_status("OVERLOADING", LightningBolt.COLOR)
+	seat.refresh()
+	var rest := seat.position
+	var judder := create_tween()
+	judder.tween_method(func(strength: float) -> void:
+		var reach := roundi(OVERLOAD_JUDDER_PIXELS * strength)
+		seat.position = rest + Vector2(randi_range(-reach, reach), randi_range(-reach, reach)), 0.3, 1.0, OverloadSparks.SECONDS)
+	judder.tween_callback(func() -> void: seat.position = rest)
+
+
+## A shield overload blew up [param target_player], just like a boom trap: see [method _blow_up_seat].
+func _on_overload_exploded(_caster: PokerPlayer, target_player: PokerPlayer) -> void:
+	_blow_up_seat(target_player)
+	_notices.enqueue("%s overloaded!" % target_player.display_name)
 
 
 ## A leech took its share: a gold beam drifts from the victim to the caster as the chips move over.

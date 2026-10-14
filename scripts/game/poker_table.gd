@@ -49,6 +49,11 @@ signal item_stolen(caster: PokerPlayer, target: PokerPlayer, item: Item.Kind)
 signal bomb_exploded(victim: PokerPlayer, caster: PokerPlayer)
 ## [param victim] saw the hand through, so the bomb on them fell off.
 signal bomb_dropped(victim: PokerPlayer)
+## Once the cast has played out, electricity starts shooting out of [param target]'s avatar; it
+## explodes [member overload_charge_delay] later, with [signal overload_exploded].
+signal overload_charging(caster: PokerPlayer, target: PokerPlayer)
+## The shield overload [param caster] cast blew up [param target], taking all their hearts.
+signal overload_exploded(caster: PokerPlayer, target: PokerPlayer)
 signal item_dropped(player: PokerPlayer, item: Item.Kind)
 signal item_phase_finished
 ## Emitted between hands when [member wait_for_next_hand] is on; call [method continue_to_next_hand].
@@ -82,6 +87,10 @@ var magpie_carry_delay := 0.6
 ## Pause while a bomb goes off, and while one falls off.
 var explosion_delay := 2.0
 var bomb_drop_delay := 0.6
+## Pause after a shield overload is cast, while the cast plays out, before the target crackles;
+## then how long it crackles before exploding (the explosion then takes [member explosion_delay]).
+var overload_delay := 1.0
+var overload_charge_delay := 1.0
 ## 0 = unlimited.
 var max_hands := 0
 ## Pause after each hand for the view: before the item phase (until [method begin_item_phase])
@@ -282,6 +291,17 @@ func detonate(victim: PokerPlayer) -> PokerPlayer:
 	return caster
 
 
+## The shield overload [param caster] cast on [param target] goes off: like a boom trap, it blows
+## them out of the game, and their chips go to [param caster].
+func overload(caster: PokerPlayer, target: PokerPlayer) -> void:
+	target.blown_up = true
+	target.hearts = 0
+	if target != caster:
+		caster.chips += target.chips
+		target.chips = 0
+	chips_changed.emit()
+
+
 ## Still playing: has chips and hearts left.
 static func in_game(p: PokerPlayer) -> bool:
 	return p.chips > 0 and p.hearts > 0
@@ -309,7 +329,8 @@ func drain_leech(victim: PokerPlayer) -> int:
 
 
 ## Everyone [param caster] could cast their hex on: anyone else still in the game, but for a
-## magpie only those carrying an item, and for a boom trap only those without a bomb on already.
+## magpie only those carrying an item, for a boom trap only those without a bomb on already, and
+## for a shield overload only those carrying a shield.
 func hex_targets(caster: PokerPlayer) -> Array[PokerPlayer]:
 	var targets := gun_targets(caster)
 	match caster.hex:
@@ -317,6 +338,8 @@ func hex_targets(caster: PokerPlayer) -> Array[PokerPlayer]:
 			return targets.filter(func(t: PokerPlayer) -> bool: return t.has_item())
 		Hex.Effect.BOOM_TRAP:
 			return targets.filter(func(t: PokerPlayer) -> bool: return not t.is_trapped())
+		Hex.Effect.SHIELD_OVERLOAD:
+			return targets.filter(func(t: PokerPlayer) -> bool: return t.item == Item.Kind.SHIELD)
 	return targets
 
 
@@ -690,6 +713,9 @@ func _apply_item_decision(p: PokerPlayer, item: Item.Kind, can_use: bool, decisi
 					if effect == Hex.Effect.MAGPIE:
 						await _send_magpie(p, target)
 						return
+					if effect == Hex.Effect.SHIELD_OVERLOAD:
+						await _overload_target(p, target)
+						return
 					if effect == Hex.Effect.LIGHTNING:
 						for struck in roll_lightning(p):
 							await _wait(lightning_delay)
@@ -712,6 +738,16 @@ func _send_magpie(caster: PokerPlayer, target: PokerPlayer) -> void:
 	item_stolen.emit(caster, target, item)
 	await _wait(magpie_carry_delay)
 	await _item_turn(caster)
+
+
+## After the cast, [param target]'s avatar crackles with electricity, then explodes.
+func _overload_target(caster: PokerPlayer, target: PokerPlayer) -> void:
+	await _wait(overload_delay)
+	overload_charging.emit(caster, target)
+	await _wait(overload_charge_delay)
+	overload(caster, target)
+	overload_exploded.emit(caster, target)
+	await _wait(explosion_delay)
 
 
 ## End of hand: each player still in the game with free hands may pick up a random item.

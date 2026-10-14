@@ -38,6 +38,7 @@ func _test_evaluator() -> void:
 	_test_magpie()
 	_test_boom_trap()
 	_test_boom_trap_phase()
+	_test_shield_overload()
 	_expect_best_five("Ah Kd 7c 7s 2d 3h Ac", "Ah Ac 7c 7s Kd")
 	_expect_best_five("2h 3h 4h 5h 7h 6d 8c", "7h 5h 4h 3h 2h")
 	_expect_best_five("Ah 2d 3c 4s 5h Kd Kc", "Ah 2d 3c 4s 5h")
@@ -91,6 +92,8 @@ func _play_hands(hands: int, item_chance: float, players: Array[PokerPlayer], do
 	table.magpie_carry_delay = 0
 	table.explosion_delay = 0
 	table.bomb_drop_delay = 0
+	table.overload_delay = 0
+	table.overload_charge_delay = 0
 	table.max_hands = hands
 	table.item_chance = item_chance
 	add_child(table)
@@ -342,6 +345,38 @@ func _test_boom_trap() -> void:
 	caster.hearts = 0
 	table.detonate(rich)
 	_check(rich.chips == 0 and caster.chips == 1700, "a caster who's out of the game gets nothing")
+	table.free()
+
+
+func _test_shield_overload() -> void:
+	var brain := NpcBrain.new()
+	var caster := PokerPlayer.new("CASTER", 1000, brain)
+	var victim := PokerPlayer.new("VICTIM", 700, brain)
+	var rich := PokerPlayer.new("RICH", 5000, brain)
+	var richer := PokerPlayer.new("RICHER", 9000, brain)
+	var table := PokerTable.new()
+	table.setup([caster, victim, rich, richer])
+	caster.item = Item.Kind.HEX
+	caster.hex = Hex.Effect.SHIELD_OVERLOAD
+	caster.item_gained_on_hand = -1
+	_check(table.hex_targets(caster).is_empty() and not table.can_use_item(caster), "a shield overload can't be cast with no shields about")
+
+	victim.item = Item.Kind.SHIELD
+	rich.item = Item.Kind.SHIELD
+	richer.item = Item.Kind.GUN
+	var targets := table.hex_targets(caster)
+	_check(targets.size() == 2 and victim in targets and rich in targets, "a shield overload can only pick players carrying a shield")
+	var bold := NpcBrain.new()
+	bold.aggression = 1
+	_check(bold.decide_item(caster, true, targets).target == rich, "an NPC overloads the biggest stack with a shield")
+
+	_check(not table.cast_hex(caster, caster) and caster.has_item(), "a shield overload can't be cast on yourself")
+	_check(not table.cast_hex(caster, richer) and caster.has_item(), "a shield overload can't be cast on someone without a shield")
+	_check(table.cast_hex(caster, victim) and not caster.has_item(), "casting a shield overload uses up the hex")
+	table.overload(caster, victim)
+	_check(victim.hearts == 0 and not PokerTable.in_game(victim), "an overload takes every heart")
+	_check(victim.blown_up, "an overloaded player is blown out of the game")
+	_check(victim.chips == 0 and caster.chips == 1700, "the victim's chips go to the caster")
 	table.free()
 
 

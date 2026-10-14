@@ -24,7 +24,7 @@ var leeched_by: PokerPlayer
 var leech_drains_left := 0
 ## Whoever strapped a bomb to this player, or null if none is on them (see [constant Hex.Effect.BOOM_TRAP]).
 var trapped_by: PokerPlayer
-## Blown out of the game by a boom trap: their seat is gone from the table.
+## Blown out of the game by a boom trap or shield overload: their seat is gone from the table.
 var blown_up := false
 
 var hole_cards: Array[Card] = []

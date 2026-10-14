@@ -26,11 +26,11 @@ var _age := 0.0
 func _ready() -> void:
 	mouse_filter = MOUSE_FILTER_IGNORE
 	var from := Vector2(lerpf(to.x, get_viewport_rect().size.x / 2, LEAN), 0)
-	_points = _jagged(from, to)
+	_points = jagged(from, to)
 	# A short fork off the bolt, partway down.
 	@warning_ignore("integer_division")
 	var split := _points[_points.size() / 2]
-	_fork = _jagged(split, split + Vector2(signf(randf() - 0.5) * 24, 30))
+	_fork = jagged(split, split + Vector2(signf(randf() - 0.5) * 24, 30))
 	var tween := create_tween()
 	tween.tween_interval(FLICKER_SECONDS)
 	tween.tween_property(self, "modulate:a", 0.0, FADE_SECONDS).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
@@ -44,13 +44,14 @@ func _process(delta: float) -> void:
 	queue_redraw()
 
 
-## A zigzag from [param from] to [param end], on whole pixels.
-static func _jagged(from: Vector2, end: Vector2) -> PackedVector2Array:
+## A zigzag from [param from] to [param end], on whole pixels: a bend every [param segment] or so,
+## each swinging up to [param jag] off the straight line.
+static func jagged(from: Vector2, end: Vector2, segment := SEGMENT, jag := JAG) -> PackedVector2Array:
 	var points := PackedVector2Array([from.floor()])
-	var steps := maxi(2, ceili(from.distance_to(end) / SEGMENT))
+	var steps := maxi(2, ceili(from.distance_to(end) / segment))
 	var across := (end - from).orthogonal().normalized()
 	for i in range(1, steps):
-		var at := from.lerp(end, float(i) / steps) + across * randf_range(-JAG, JAG)
+		var at := from.lerp(end, float(i) / steps) + across * randf_range(-jag, jag)
 		points.append(at.floor())
 	points.append(end.floor())
 	return points

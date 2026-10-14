@@ -9,6 +9,8 @@ signal give_item(item: Item.Kind)
 signal give_hex(effect: Hex.Effect)
 ## Emitted when GIVE NPCS STIMPAKS is picked; the menu closes itself.
 signal give_npcs_stimpaks
+## Emitted when GIVE NPC SHIELD is picked; the menu closes itself.
+signal give_npc_shield
 ## Emitted when GIVE $1000 is picked; the menu closes itself.
 signal give_chips(amount: int)
 ## Emitted when LOSE A HEART is picked; the menu closes itself.
@@ -70,6 +72,7 @@ func _ready() -> void:
 	_add_button(grid, "GIVE SHIELD", _give.bind(Item.Kind.SHIELD))
 	_add_button(grid, "GIVE STIMPAK", _give.bind(Item.Kind.STIMPAK))
 	_add_button(grid, "GIVE NPCS STIMPAKS", _picked(give_npcs_stimpaks.emit))
+	_add_button(grid, "GIVE NPC SHIELD", _picked(give_npc_shield.emit))
 	for effect: Hex.Effect in Hex.Effect.values():
 		_add_button(grid, "GIVE %s HEX" % Hex.display_name(effect), _picked(give_hex.emit.bind(effect)))
 	_add_button(grid, "GIVE $%d" % GIVE_CHIPS, _picked(give_chips.emit.bind(GIVE_CHIPS)))

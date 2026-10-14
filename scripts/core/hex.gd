@@ -20,6 +20,9 @@ enum Effect {
 	## or end it with no chips left, it blows them out of the game (their chips go to the
 	## caster); if they see the hand through, it falls off.
 	BOOM_TRAP,
+	## The caster picks another player carrying a shield, which overloads: their avatar crackles
+	## with electricity until it explodes, blowing them out of the game (their chips go to the caster).
+	SHIELD_OVERLOAD,
 }
 
 ## How many hands a leech drains its victim for.
@@ -43,7 +46,7 @@ static func random(rng: RandomNumberGenerator = null) -> Effect:
 ## Whether casting [param effect] needs another player picked.
 static func needs_target(effect: Effect) -> bool:
 	match effect:
-		Effect.SHIMMER, Effect.LEECH, Effect.MAGPIE, Effect.BOOM_TRAP: return true
+		Effect.SHIMMER, Effect.LEECH, Effect.MAGPIE, Effect.BOOM_TRAP, Effect.SHIELD_OVERLOAD: return true
 		Effect.LIGHTNING: return false
 	assert(false, "unknown hex %d" % effect)
 	return false
@@ -57,6 +60,7 @@ static func display_name(effect: Effect) -> String:
 		Effect.LIGHTNING: return "LIGHTNING"
 		Effect.MAGPIE: return "MAGPIE"
 		Effect.BOOM_TRAP: return "BOOM TRAP"
+		Effect.SHIELD_OVERLOAD: return "SHIELD OVERLOAD"
 	assert(false, "unknown hex %d" % effect)
 	return ""
 
@@ -70,6 +74,7 @@ static func image(effect: Effect) -> Texture2D:
 		Effect.LIGHTNING: path = "res://assets/hexes/lightning.png"
 		Effect.MAGPIE: path = "res://assets/hexes/magpie.png"
 		Effect.BOOM_TRAP: path = "res://assets/hexes/boom_trap.png"
+		Effect.SHIELD_OVERLOAD: path = "res://assets/hexes/shield_overload.png"
 		_: assert(false, "unknown hex %d" % effect)
 	return load(path) if ResourceLoader.exists(path) else null
 
@@ -90,5 +95,7 @@ static func description(effect: Effect) -> String:
 			return "Pick another player who's carrying an item. A magpie swoops down, steals it and brings it to you, to use or drop straight away."
 		Effect.BOOM_TRAP:
 			return "Strap a bomb to another player. If they fold next hand, or end it broke, they blow up and you get whatever chips they had left. If they see the hand through, the bomb falls off."
+		Effect.SHIELD_OVERLOAD:
+			return "Pick another player who's carrying a shield. It overloads with electricity and explodes, blowing them out of the game, and you get their chips."
 	assert(false, "unknown hex %d" % effect)
 	return ""
