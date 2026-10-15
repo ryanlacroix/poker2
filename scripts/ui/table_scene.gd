@@ -15,6 +15,7 @@ const CHIP_CHANGE_RISE := 10.0
 const CHIP_CHANGE_FONT_SIZE := UiTheme.FONT_SIZE + 4
 const POT_FONT_SIZE := UiTheme.FONT_SIZE + 4
 const POT_POP_SIZE := POT_FONT_SIZE + 6
+const POT_BOX_SIZE := Vector2(280, 60)
 ## Gap between board cards dealt together (the flop) going down.
 const BOARD_DEAL_STAGGER := 0.07
 ## Gap between hole cards going down as they're dealt round the table.
@@ -352,10 +353,11 @@ func _build_ui() -> void:
 		add_child(view)
 		_community.append(view)
 
-	# Pot of gold + amount; the box is tall and centred so it grows from its middle when it pops.
+	# Pot of gold + amount; the box is big and centred so the amount grows from its middle as it
+	# pops, and as the pot swells.
 	_pot = PotView.new()
 	_pot.font_size = POT_FONT_SIZE
-	UiTheme.add_at(self, _pot, pot_center - Vector2(80, 20), Vector2(160, 40))
+	UiTheme.add_at(self, _pot, pot_center - POT_BOX_SIZE / 2, POT_BOX_SIZE)
 
 	# An invisible spot where the DEBUG button was: three quick taps open the debug menu.
 	var debug_spot := Control.new()
@@ -1387,6 +1389,7 @@ func _refresh_seats() -> void:
 		_bet_piles[i].amount = _table.players[i].total_bet
 	var pot := _table.pot()
 	_pot.amount = pot
+	_pot.grow_to(_pot_growth(pot))
 	if pot > _shown_pot:
 		_pop_pot_label()
 	_shown_pot = pot
@@ -1424,7 +1427,16 @@ func _show_chip_change(seat: SeatView, delta: int) -> void:
 		label.queue_free())
 
 
-## Money went into the pot: the pot display swells briefly, then settles back.
+## How grown the pot display should be for a pot of [param pot]: its share of all the chips in
+## play, on a square-root curve so the first bets already show (a pot holding every chip is full size).
+func _pot_growth(pot: int) -> float:
+	var in_play := pot
+	for p in _table.players:
+		in_play += p.chips
+	return sqrt(float(pot) / in_play) if in_play > 0 else 0.0
+
+
+## Money went into the pot: the amount swells briefly, then settles back.
 func _pop_pot_label() -> void:
 	if _pot_tween:
 		_pot_tween.kill()
