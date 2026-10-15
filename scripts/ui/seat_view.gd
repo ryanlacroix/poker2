@@ -16,8 +16,6 @@ const COMPACT_SIZE := Vector2(106, 52 + UiTheme.LINE_HEIGHT * 3)
 const PORTRAIT_SIZE := Vector2(48, 48)
 const WIDE_CARD_SCALE := 2
 const STATUS_COLOR := Color("9fe0a0")
-## Space between the plates of two carried items, side by side along the portrait's bottom.
-const ITEM_PLATE_GAP := 3
 ## The dealer button: a square "D" in the inner bottom corner of the dealer's seat.
 const DEALER_SIZE := 9
 const HIT_SECONDS := 0.6
@@ -519,8 +517,8 @@ static func _draw_portrait_frame(c: CanvasItem, frame: Rect2, dimmed: bool) -> v
 		c.draw_rect(Rect2(corner, Vector2.ONE), light)
 
 
-## The carried items, each a small icon on a dark plate along the portrait's bottom, the first in
-## the corner nearest the cards. [member hidden_item] isn't drawn.
+## The carried items, each a small icon on a dark plate in a bottom corner of the portrait, the
+## first in the one nearest the cards. [member hidden_item] isn't drawn.
 func _draw_item(c: CanvasItem, frame: Rect2) -> void:
 	var slots := _slots()
 	var plates := _plates(frame, slots)
@@ -546,16 +544,16 @@ func _slots() -> Array:
 
 
 ## The plate for each of [param slots] (items, or null for a hex's place) on the portrait
-## [param frame]: the first in the corner nearest the cards, the next beside it toward the middle.
+## [param frame]: the first in the bottom corner nearest the cards, the second in the other bottom corner.
 func _plates(frame: Rect2, slots: Array) -> Array[Rect2]:
 	var plates: Array[Rect2] = []
-	var x := frame.position.x if style == Style.COMPACT_RIGHT else frame.end.x
-	for held: HeldItem in slots:
+	for i in slots.size():
+		var held: HeldItem = slots[i]
 		var icon: Array = item_art(held.kind if held else Item.Kind.HEX)[0]
 		var plate_size := Vector2(icon[0].length(), icon.size()) + Vector2(4, 4)
-		var left := x if style == Style.COMPACT_RIGHT else x - plate_size.x
+		var on_left := (style == Style.COMPACT_RIGHT) == (i == 0)
+		var left := frame.position.x if on_left else frame.end.x - plate_size.x
 		plates.append(Rect2(Vector2(left, frame.end.y - plate_size.y), plate_size))
-		x = left + plate_size.x + ITEM_PLATE_GAP if style == Style.COMPACT_RIGHT else left - ITEM_PLATE_GAP
 	return plates
 
 
