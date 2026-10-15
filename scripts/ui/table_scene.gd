@@ -16,6 +16,8 @@ const CHIP_CHANGE_FONT_SIZE := UiTheme.FONT_SIZE + 4
 const POT_FONT_SIZE := UiTheme.FONT_SIZE + 4
 const POT_POP_SIZE := POT_FONT_SIZE + 6
 const POT_BOX_SIZE := Vector2(280, 60)
+## Status text for a player under cordyceps.
+const CORDYCEPS_COLOR := Color("f2b060")
 ## Coins that fly from the pot to its winners when it's paid out: from the fewest, for the smallest
 ## pots, to the most, for a pot holding every chip in play (by the same measure the pot display
 ## grows by). They're split between the winners by their shares.
@@ -664,6 +666,14 @@ func _connect_table() -> void:
 			seat.set_active(seat.player == player)
 		if player.is_human():
 			_show_actions(player, to_call, min_to, max_to))
+	_table.cordyceps_took_over.connect(func(player: PokerPlayer) -> void:
+		for seat in _seats:
+			seat.set_active(seat.player == player)
+		_seats[player.seat].set_status("CORDYCEPS!", CORDYCEPS_COLOR)
+		_notices.enqueue("The cordyceps takes over! You're going all in." if player.is_human()
+			else "The cordyceps takes over %s!" % player.display_name))
+	_table.cordyceps_ended.connect(func(player: PokerPlayer) -> void:
+		_seats[player.seat].refresh())
 	_table.player_acted.connect(func(player: PokerPlayer, action: Poker.Action, amount: int) -> void:
 		var text: String
 		match action:
@@ -1037,6 +1047,7 @@ static func _no_target_reason(effect: Hex.Effect) -> String:
 		Hex.Effect.SHIELD_OVERLOAD: return "NO SHIELDED PLAYERS"
 		Hex.Effect.MAGPIE: return "NO ITEMS TO STEAL"
 		Hex.Effect.BOOM_TRAP: return "NO ONE LEFT TO TRAP"
+		Hex.Effect.CORDYCEPS: return "NO ONE LEFT TO INFECT"
 	return "NO ONE TO HEX"
 
 
@@ -1142,6 +1153,9 @@ func _on_hex_cast(caster: PokerPlayer, effect: Hex.Effect, target: PokerPlayer, 
 			_seats[target.seat].refresh()
 		Hex.Effect.BOOM_TRAP:
 			_seats[target.seat].set_status("TRAPPED", PixelArt.HEART_RED)
+			_seats[target.seat].refresh()
+		Hex.Effect.CORDYCEPS:
+			_seats[target.seat].set_status("INFECTED", CORDYCEPS_COLOR)
 			_seats[target.seat].refresh()
 	if not caster.is_human():
 		_notices.enqueue("%s cast %s on %s" % [caster.display_name, Hex.display_name(effect).to_lower(),

@@ -23,6 +23,10 @@ enum Effect {
 	## The caster picks another player carrying a shield, which overloads: their avatar crackles
 	## with electricity until it explodes, blowing them out of the game (their chips go to the caster).
 	SHIELD_OVERLOAD,
+	## The caster picks another player and infects them for the next hand. On their first betting
+	## turn the fungus takes over and they go all in, whatever their cards. It wears off when that
+	## hand ends (even if they never got a turn).
+	CORDYCEPS,
 }
 
 ## How many hands a leech drains its victim for.
@@ -46,7 +50,7 @@ static func random(rng: RandomNumberGenerator = null) -> Effect:
 ## Whether casting [param effect] needs another player picked.
 static func needs_target(effect: Effect) -> bool:
 	match effect:
-		Effect.SHIMMER, Effect.LEECH, Effect.MAGPIE, Effect.BOOM_TRAP, Effect.SHIELD_OVERLOAD: return true
+		Effect.SHIMMER, Effect.LEECH, Effect.MAGPIE, Effect.BOOM_TRAP, Effect.SHIELD_OVERLOAD, Effect.CORDYCEPS: return true
 		Effect.LIGHTNING: return false
 	assert(false, "unknown hex %d" % effect)
 	return false
@@ -61,6 +65,7 @@ static func display_name(effect: Effect) -> String:
 		Effect.MAGPIE: return "MAGPIE"
 		Effect.BOOM_TRAP: return "BOOM TRAP"
 		Effect.SHIELD_OVERLOAD: return "SHIELD OVERLOAD"
+		Effect.CORDYCEPS: return "CORDYCEPS"
 	assert(false, "unknown hex %d" % effect)
 	return ""
 
@@ -75,6 +80,7 @@ static func image(effect: Effect) -> Texture2D:
 		Effect.MAGPIE: path = "res://assets/hexes/magpie.png"
 		Effect.BOOM_TRAP: path = "res://assets/hexes/boom_trap.png"
 		Effect.SHIELD_OVERLOAD: path = "res://assets/hexes/shield_overload.png"
+		Effect.CORDYCEPS: path = "res://assets/hexes/cordyceps.png"
 		_: assert(false, "unknown hex %d" % effect)
 	return load(path) if ResourceLoader.exists(path) else null
 
@@ -97,5 +103,7 @@ static func description(effect: Effect) -> String:
 			return "Strap a bomb to another player. If they fold next hand, or end it broke, they blow up and you get whatever chips they had left. If they see the hand through, the bomb falls off."
 		Effect.SHIELD_OVERLOAD:
 			return "Pick another player who's carrying a shield. It overloads with electricity and explodes, blowing them out of the game, and you get their chips."
+		Effect.CORDYCEPS:
+			return "Infect another player with cordyceps. On their next turn to bet, the fungus takes over and they go all in, whatever their cards. It wears off at the end of the round."
 	assert(false, "unknown hex %d" % effect)
 	return ""

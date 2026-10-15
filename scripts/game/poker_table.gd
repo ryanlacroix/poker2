@@ -51,6 +51,11 @@ signal item_stolen(caster: PokerPlayer, target: PokerPlayer, item: HeldItem)
 signal bomb_exploded(victim: PokerPlayer, caster: PokerPlayer)
 ## [param victim] saw the hand through, so the bomb on them fell off.
 signal bomb_dropped(victim: PokerPlayer)
+## It's [param player]'s turn to bet, but the cordyceps on them takes over: they go all in (with
+## [signal player_acted]) [member npc_think_time] later, without a choice.
+signal cordyceps_took_over(player: PokerPlayer)
+## The cordyceps on [param player] wore off, at the end of the hand it was meant for.
+signal cordyceps_ended(player: PokerPlayer)
 ## Once the cast has played out, electricity starts shooting out of [param target]'s avatar; it
 ## explodes [member overload_charge_delay] later, with [signal overload_exploded].
 signal overload_charging(caster: PokerPlayer, target: PokerPlayer)
@@ -251,6 +256,8 @@ func cast_hex(caster: PokerPlayer, hex: HeldItem, target: PokerPlayer) -> bool:
 			target.leech_drains_left = Hex.LEECH_HANDS
 		Hex.Effect.BOOM_TRAP:
 			target.trapped_by = caster
+		Hex.Effect.CORDYCEPS:
+			target.infected_by = caster
 	chips_changed.emit()
 	return true
 
@@ -335,7 +342,8 @@ func drain_leech(victim: PokerPlayer) -> int:
 
 ## Everyone [param caster] could cast a hex with [param effect] on: anyone else still in the game,
 ## but for a magpie only those carrying an item, for a boom trap only those without a bomb on
-## already, and for a shield overload only those carrying a shield.
+## already, for a shield overload only those carrying a shield, and for cordyceps only those not
+## already infected.
 func hex_targets(caster: PokerPlayer, effect: Hex.Effect) -> Array[PokerPlayer]:
 	var targets := gun_targets(caster)
 	match effect:
@@ -345,6 +353,8 @@ func hex_targets(caster: PokerPlayer, effect: Hex.Effect) -> Array[PokerPlayer]:
 			return targets.filter(func(t: PokerPlayer) -> bool: return not t.is_trapped())
 		Hex.Effect.SHIELD_OVERLOAD:
 			return targets.filter(func(t: PokerPlayer) -> bool: return t.has(Item.Kind.SHIELD))
+		Hex.Effect.CORDYCEPS:
+			return targets.filter(func(t: PokerPlayer) -> bool: return not t.is_infected())
 	return targets
 
 
@@ -384,6 +394,7 @@ func _game_continues() -> bool:
 func start_game() -> void:
 	while _game_continues():
 		await _play_hand()
+		_end_cordyceps()
 		if players.any(func(p: PokerPlayer) -> bool: return p.is_trapped()):
 			await _wait_for_view()
 			await _settle_bombs()
@@ -497,7 +508,13 @@ func _betting_round(start: int) -> void:
 			var min_to := mini(current_bet + _min_raise, max_to)
 
 			var decision: Decision
-			if player.is_human():
+			if player.is_infected():
+				# The fungus decides: all in (a call, if they can't raise). All in, they won't get
+				# another turn this hand; it wears off when the hand ends.
+				cordyceps_took_over.emit(player)
+				await _wait(npc_think_time)
+				decision = Decision.new(Poker.Action.RAISE, max_to)
+			elif player.is_human():
 				_human_decision = Completion.new()
 				turn_started.emit(player, to_call, min_to, max_to)
 				decision = await _human_decision.wait()
@@ -698,6 +715,16 @@ func _settle_bombs() -> void:
 			p.trapped_by = null
 			bomb_dropped.emit(p)
 			await _wait(bomb_drop_delay)
+
+
+## After a hand: any cordyceps wears off, whether it made its victim go all in or they never got a
+## turn to bet (everyone else folded first, they were all in already, or they weren't dealt in).
+## It's cast between hands, so this is always the hand it was meant for.
+func _end_cordyceps() -> void:
+	for p in players:
+		if p.is_infected():
+			p.infected_by = null
+			cordyceps_ended.emit(p)
 
 
 ## Start of the item phase: each leech takes its share from its victim. A leech whose victim or

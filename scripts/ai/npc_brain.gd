@@ -115,7 +115,8 @@ const MAGPIE_WANTS: Array[Item.Kind] = [Item.Kind.GUN, Item.Kind.HEX, Item.Kind.
 
 
 ## Who to cast [param effect] on, or null if it needs nobody (lightning). Shimmer, leech, boom
-## trap and shield overload go on the biggest stack that doesn't already have one: a shimmer draws
+## trap, shield overload and cordyceps go on the biggest stack that doesn't already have one (a
+## forced all-in from the biggest stack makes the biggest pot to win): a shimmer draws
 ## everyone's fire and its spread never hits the caster, so it marks the player the caster most
 ## wants shot; a leech takes a share of the victim's chips, and a blown-up or overloaded victim's
 ## chips go to the caster, so the richer the better (a shield overload can only pick from those
@@ -137,6 +138,7 @@ static func _pick_hex_target(effect: Hex.Effect, targets: Array[PokerPlayer]) ->
 			Hex.Effect.SHIMMER: return t.is_shimmering()
 			Hex.Effect.LEECH: return t.is_leeched()
 			Hex.Effect.BOOM_TRAP: return t.is_trapped()
+			Hex.Effect.CORDYCEPS: return t.is_infected()
 		return false
 	var best: PokerPlayer = null
 	for t in targets:

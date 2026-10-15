@@ -40,6 +40,8 @@ func _test_evaluator() -> void:
 	_test_boom_trap()
 	_test_boom_trap_phase()
 	_test_shield_overload()
+	_test_cordyceps()
+	_test_cordyceps_phase()
 	_expect_best_five("Ah Kd 7c 7s 2d 3h Ac", "Ah Ac 7c 7s Kd")
 	_expect_best_five("2h 3h 4h 5h 7h 6d 8c", "7h 5h 4h 3h 2h")
 	_expect_best_five("Ah 2d 3c 4s 5h Kd Kc", "Ah 2d 3c 4s 5h")
@@ -413,6 +415,54 @@ func _test_shield_overload() -> void:
 	_check(victim.blown_up, "an overloaded player is blown out of the game")
 	_check(victim.chips == 0 and caster.chips == 1700, "the victim's chips go to the caster")
 	table.free()
+
+
+func _test_cordyceps() -> void:
+	var brain := NpcBrain.new()
+	var caster := PokerPlayer.new("CASTER", 1000, brain)
+	var victim := PokerPlayer.new("VICTIM", 700, brain)
+	var rich := PokerPlayer.new("RICH", 5000, brain)
+	var table := PokerTable.new()
+	table.setup([caster, victim, rich])
+	var hex := _hold(caster, Item.Kind.HEX, Hex.Effect.CORDYCEPS)
+
+	var bold := NpcBrain.new()
+	bold.aggression = 1
+	_check(_decide(bold, table, caster).target == rich, "an NPC infects the biggest stack")
+	_check(not table.cast_hex(caster, hex, caster) and caster.has_item(), "cordyceps can't be cast on yourself")
+	_check(table.cast_hex(caster, hex, victim) and not caster.has_item(), "casting cordyceps uses up the hex")
+	_check(victim.infected_by == caster, "the target is infected")
+	_check(victim not in table.hex_targets(caster, Hex.Effect.CORDYCEPS), "a player can't be infected twice")
+	table.free()
+
+
+func _test_cordyceps_phase() -> void:
+	# Cordyceps is on B before a hand: on B's first turn to bet, they go all in without a choice
+	# (even a timid brain). It stays on them for the rest of the hand, and wears off when it ends.
+	var timid := NpcBrain.new()
+	timid.simulations = 20
+	timid.aggression = 0
+	var players: Array[PokerPlayer] = [
+		PokerPlayer.new("A", 1000, timid), PokerPlayer.new("B", 1000, timid),
+		PokerPlayer.new("C", 1000, timid), PokerPlayer.new("D", 1000, timid),
+	]
+	players[1].infected_by = players[0]
+	# Lambdas capture locals by value, so the results they record go in here.
+	var seen := {"took_over": 0, "ended": 0, "first_action": null, "all_in": false, "infected_after": false}
+	_play_hands(1, 0, players, func(_table: PokerTable) -> void:
+		_check(not players[1].is_infected() and seen.ended == 1, "cordyceps wears off after the hand, once")
+		if seen.took_over > 0:
+			_check(seen.took_over == 1, "cordyceps takes over just one turn")
+			_check(seen.first_action in [Poker.Action.RAISE, Poker.Action.CALL] and seen.all_in, "an infected player goes all in on their first turn")
+			_check(seen.infected_after, "cordyceps stays on after the forced all-in, until the hand ends"),
+		func(table: PokerTable) -> void:
+			table.cordyceps_took_over.connect(func(_p: PokerPlayer) -> void: seen.took_over += 1)
+			table.cordyceps_ended.connect(func(_p: PokerPlayer) -> void: seen.ended += 1)
+			table.player_acted.connect(func(p: PokerPlayer, action: Poker.Action, _amount: int) -> void:
+				if p == players[1] and seen.first_action == null:
+					seen.first_action = action
+					seen.all_in = p.all_in
+					seen.infected_after = p.is_infected()))
 
 
 func _test_boom_trap_phase() -> void:

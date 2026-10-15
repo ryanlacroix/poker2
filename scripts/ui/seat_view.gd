@@ -347,7 +347,7 @@ func _hit_active() -> bool:
 
 func _animating() -> bool:
 	return _is_winner or _is_target or _hit_active() or _hex_glow_progress() >= 0 or _shimmering() or _leeched() \
-		or _trapped() or _bomb_drop_time() >= 0 or _hex_fizzle_time() >= 0
+		or _trapped() or _bomb_drop_time() >= 0 or _hex_fizzle_time() >= 0 or _infected()
 
 
 ## Under a shimmer and still in the game (a shimmer on someone knocked out stops showing).
@@ -370,6 +370,11 @@ func _still_playing() -> bool:
 ## settled, even with no chips left in front of them.
 func _trapped() -> bool:
 	return player.is_trapped() and not player.is_out and player.hearts > 0
+
+
+## Infected with cordyceps and still in the game.
+func _infected() -> bool:
+	return player.is_infected() and _still_playing()
 
 
 # Only redraw every frame while something is animating.
@@ -490,6 +495,8 @@ func _draw_portrait(c: CanvasItem) -> void:
 		_draw_hex_fizzle(c, frame, _hex_fizzle_time())
 	if _leeched():
 		_draw_leech(c, frame)
+	if _infected():
+		_draw_cordyceps(c, frame)
 	if _trapped():
 		_draw_bomb(c, frame, 0.0)
 	elif _bomb_drop_time() >= 0:
@@ -900,6 +907,30 @@ func _draw_bomb(c: CanvasItem, frame: Rect2, dropped: float) -> void:
 	for key: String in PixelArt.BOMB_COLORS:
 		colors[key] = Color(PixelArt.BOMB_COLORS[key], fade)
 	PixelArt.draw_colored(c, art, colors, at.floor(), PX)
+
+
+## Cordyceps sprouting from the head: a few orange fungal stalks rising out of the top of the
+## portrait, each topped with a pale bulb, swaying slowly and out of step.
+func _draw_cordyceps(c: CanvasItem, frame: Rect2) -> void:
+	const PX := 2
+	const STALK := Color("b8642a")
+	const BULB := Color("f2b060")
+	const DARK := Color("3a1a08")
+	var t := Time.get_ticks_msec() / 1000.0
+	# Where each stalk rises from (share of the portrait's width) and how many cells tall it is.
+	for stalk: Vector3 in [Vector3(0.3, 7, 0.0), Vector3(0.5, 9, 2.1), Vector3(0.7, 6, 4.3)]:
+		var base := Vector2(frame.position.x + frame.size.x * stalk.x, frame.position.y + 8).floor()
+		var cells := int(stalk.y)
+		var tip := base
+		for j in cells:
+			# Bends more toward the tip, so it sways from the root.
+			var bend := pow(float(j) / cells, 2) * sin(t * 1.6 + stalk.z) * 3.0
+			tip = (base + Vector2(bend, -j * PX)).round()
+			c.draw_rect(Rect2(tip - Vector2(1, 0), Vector2(PX + 2, PX)), DARK)
+			c.draw_rect(Rect2(tip, Vector2(PX, PX)), STALK)
+		var bulb := Rect2(tip - Vector2(2, 3), Vector2(PX + 4, 4))
+		c.draw_rect(bulb.grow(1), DARK)
+		c.draw_rect(bulb, BULB)
 
 
 ## Offsets the shimmer's twinkles so seats under a shimmer don't sparkle in lockstep.

@@ -20,6 +20,8 @@ var leeched_by: PokerPlayer
 var leech_drains_left := 0
 ## Whoever strapped a bomb to this player, or null if none is on them (see [constant Hex.Effect.BOOM_TRAP]).
 var trapped_by: PokerPlayer
+## Whoever infected this player with cordyceps, or null if they aren't (see [constant Hex.Effect.CORDYCEPS]).
+var infected_by: PokerPlayer
 ## Blown out of the game by a boom trap or shield overload: their seat is gone from the table.
 var blown_up := false
 
@@ -62,6 +64,10 @@ func is_leeched() -> bool:
 
 func is_trapped() -> bool:
 	return trapped_by != null
+
+
+func is_infected() -> bool:
+	return infected_by != null
 
 
 func has_item() -> bool:
