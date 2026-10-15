@@ -16,6 +16,11 @@ const CHIP_CHANGE_FONT_SIZE := UiTheme.FONT_SIZE + 4
 const POT_FONT_SIZE := UiTheme.FONT_SIZE + 4
 const POT_POP_SIZE := POT_FONT_SIZE + 6
 const POT_BOX_SIZE := Vector2(280, 60)
+## Coins that fly from the pot to its winners when it's paid out: from the fewest, for the smallest
+## pots, to the most, for a pot holding every chip in play (by the same measure the pot display
+## grows by). They're split between the winners by their shares.
+const POT_COINS_MIN := 3
+const POT_COINS_MAX := 40
 ## Gap between board cards dealt together (the flop) going down.
 const BOARD_DEAL_STAGGER := 0.07
 ## Gap between hole cards going down as they're dealt round the table.
@@ -689,6 +694,7 @@ func _connect_table() -> void:
 				names.append(p.display_name.to_upper())
 		_win_banner.show_banner(HandEvaluator.describe(best).to_upper(), " & ".join(names)))
 	_table.pot_awarded.connect(func(player: PokerPlayer, amount: int, hand_name: String) -> void:
+		_send_coins(player, amount)
 		_seats[player.seat].set_status("WINS $%d" % amount, PixelArt.GOLD)
 		_winners[player] = true
 		# Uncontested pots have no shown hand; only showdown winners light up cards.
@@ -1434,6 +1440,24 @@ func _pot_growth(pot: int) -> float:
 	for p in _table.players:
 		in_play += p.chips
 	return sqrt(float(pot) / in_play) if in_play > 0 else 0.0
+
+
+## [param winner] was paid [param amount] of the pot (still all on the table): coins fly from the
+## pot of gold to them, their share of the pot's coins (at least one). The bigger the pot, the more
+## coins: see [constant POT_COINS_MIN].
+func _send_coins(winner: PokerPlayer, amount: int) -> void:
+	var pot := maxi(_table.pot(), amount)
+	# The pot display's growth was set before any of it was paid out, so it measures the whole pot.
+	var pot_coins := lerpf(POT_COINS_MIN, POT_COINS_MAX, _pot.target_growth())
+	var shower := CoinShower.new()
+	shower.from = _pot.position + _pot.icon_center()
+	shower.to = _seats[winner.seat].portrait_center()
+	shower.count = maxi(1, roundi(pot_coins * amount / pot))
+	UiTheme.add_at(self, shower, Vector2.ZERO, get_viewport_rect().size)
+	# Just under the pot: over the seats, chip piles and cards, but under the pot of gold and the
+	# portraits (which sit on a layer of their own), so coins leave from behind the pot and land
+	# behind the winner's face.
+	move_child(shower, _pot.get_index())
 
 
 ## Money went into the pot: the amount swells briefly, then settles back.

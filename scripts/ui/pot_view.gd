@@ -11,9 +11,13 @@ const GAP := 4
 const ICON_SCALE := 2
 ## At full growth the amount is this many times its resting size...
 const MAX_GROWTH_SCALE := 2.0
-## ...and this colour, having gone through ORANGE halfway there.
+## ...and this colour. It stays gold through the lower band of growth, up to [constant WARM_FROM],
+## then warms quickly to ORANGE by [constant ORANGE_AT] and on to red by [constant HOT_AT].
 const ORANGE := Color("ff8a30")
 const HOT := PixelArt.HEART_RED
+const WARM_FROM := 0.4
+const ORANGE_AT := 0.55
+const HOT_AT := 0.75
 ## How quickly [member growth] closes on its target: the share of the gap closed each second.
 const GROWTH_RATE := 1.5
 ## Once the pot empties, how long the display takes to fade out, and how far it sinks meanwhile.
@@ -79,9 +83,26 @@ func _process(delta: float) -> void:
 	queue_redraw()
 
 
-## The amount's colour at [param k] growth: gold, through orange, to red.
+## Where [member growth] is heading: how big the pot is, 0 to 1 (see [method grow_to]).
+func target_growth() -> float:
+	return _target_growth
+
+
+## Centre of the pot of gold as it's drawn now, in local coordinates.
+func icon_center() -> Vector2:
+	var font := get_theme_default_font()
+	var text_size := roundi(font_size * lerpf(1.0, MAX_GROWTH_SCALE, growth))
+	var text_width := font.get_string_size("$%d" % amount, HORIZONTAL_ALIGNMENT_LEFT, -1, text_size).x
+	var icon := Vector2(PixelArt.POT_OF_GOLD[0].length(), PixelArt.POT_OF_GOLD.size()) * ICON_SCALE
+	var left := floorf((size.x - (icon.x + GAP + text_width)) / 2)
+	return Vector2(left + icon.x / 2, size.y / 2)
+
+
+## The amount's colour at [param k] growth: gold for the lower band, then quickly through orange to red.
 static func growth_color(k: float) -> Color:
-	return PixelArt.GOLD.lerp(ORANGE, k * 2) if k < 0.5 else ORANGE.lerp(HOT, (k - 0.5) * 2)
+	if k < ORANGE_AT:
+		return PixelArt.GOLD.lerp(ORANGE, smoothstep(WARM_FROM, ORANGE_AT, k))
+	return ORANGE.lerp(HOT, smoothstep(ORANGE_AT, HOT_AT, k))
 
 
 func _draw() -> void:
