@@ -1,6 +1,6 @@
 extends Control
-## Title screen: the splash art filling the screen and slowly drifting inside a gilt border, with
-## the title and a gilded rule sitting just above JOIN TABLE near the bottom.
+## Title screen: the splash art filling the screen and slowly drifting, with the title and a
+## gilded rule sitting just above JOIN TABLE near the bottom.
 
 const SPLASH_PATH := "res://assets/sprites/poker-splash.png"
 ## Furthest the splash drifts from centre, in pixels, and how long one full sway takes.
@@ -12,8 +12,6 @@ const EDGE_MARGIN := 80.0
 const TITLE_GAP := 12.0
 const RULE_WIDTH := 220.0
 const RULE_HEIGHT := 9.0
-## How far the gilt border round the screen sits in from its edges.
-const BORDER_INSET := 6.0
 ## Where the vignette starts darkening, as a share of the centre-to-corner distance.
 const VIGNETTE_START := 0.45
 ## On load the splash fades in from black, then the title and button fade in together.
@@ -30,7 +28,6 @@ func _ready() -> void:
 	# The title screen always wears the baseline (table 1) style.
 	InterfaceStyle.current = InterfaceStyle.for_table(1)
 	add_child(_vignette())
-	add_child(_gilt_border())
 
 	var box := VBoxContainer.new()
 	box.set_anchors_preset(PRESET_FULL_RECT)
@@ -112,24 +109,6 @@ static func _vignette() -> TextureRect:
 	rect.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
 	rect.mouse_filter = MOUSE_FILTER_IGNORE
 	return rect
-
-
-## A gilt frame inset round the screen, with a gem at the middle of each side.
-static func _gilt_border() -> Control:
-	var border := Control.new()
-	border.set_anchors_preset(PRESET_FULL_RECT)
-	border.mouse_filter = MOUSE_FILTER_IGNORE
-	var style := InterfaceStyle.current
-	var box := Ornament.frame_box(Color(0, 0, 0, 0), style.trim, style.trim_dark)
-	border.draw.connect(func() -> void:
-		var rect := Rect2(Vector2.ZERO, border.size).grow(-BORDER_INSET)
-		box.draw(border.get_canvas_item(), rect)
-		var mid := (rect.get_center() - Vector2.ONE * 0.5).floor()
-		for gem: Vector2 in [Vector2(mid.x, rect.position.y + 1), Vector2(mid.x, rect.end.y - 2),
-				Vector2(rect.position.x + 1, mid.y), Vector2(rect.end.x - 2, mid.y)]:
-			Ornament.draw_gem(border, gem, 3))
-	border.resized.connect(border.queue_redraw)
-	return border
 
 
 static func _button(text: String) -> Button:
