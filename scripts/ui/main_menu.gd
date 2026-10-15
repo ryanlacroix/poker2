@@ -112,7 +112,7 @@ static func _vignette() -> TextureRect:
 
 
 static func _button(text: String) -> Button:
-	var button := Button.new()
+	var button := MarqueeButton.new()
 	button.text = text
 	button.custom_minimum_size = Vector2(160, 36)
 	return button

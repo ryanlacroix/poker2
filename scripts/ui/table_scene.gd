@@ -88,7 +88,7 @@ var _shown_chips: Array[int] = [] # each player's stack as last shown
 var _chip_change_labels := {} # SeatView -> the "+100" Label currently over its portrait
 var _pot_tween: Tween
 var _action_bar: Panel
-var _fold_button: Button
+var _fold_button: MarqueeButton
 ## Whether the human can act: false as soon as the action bar starts fading out.
 var _actions_open := false
 var _action_bar_tween: Tween
@@ -538,7 +538,7 @@ func _build_action_bar() -> void:
 		_submit(Decision.new(Poker.Action.RAISE, int(_raise_slider.value))))
 
 
-func _action_button(text: String, y: float, on_pressed: Callable) -> Button:
+func _action_button(text: String, y: float, on_pressed: Callable) -> MarqueeButton:
 	var pad := PortraitLayout.ACTION_PADDING
 	var button := _new_button(text)
 	UiTheme.add_at(_action_bar, button,
@@ -547,8 +547,8 @@ func _action_button(text: String, y: float, on_pressed: Callable) -> Button:
 	return button
 
 
-static func _new_button(text: String, shown := true) -> Button:
-	var button := Button.new()
+static func _new_button(text: String, shown := true) -> MarqueeButton:
+	var button := MarqueeButton.new()
 	button.text = text
 	button.visible = shown
 	return button
@@ -587,11 +587,7 @@ func _show_actions(p: PokerPlayer, to_call: int, min_to: int, max_to: int) -> vo
 	_to_call = to_call
 	# With a bomb strapped on, folding sets it off.
 	_fold_button.text = "FOLD = BOOM!" if p.is_trapped() else "FOLD"
-	for state in ["font_color", "font_hover_color", "font_pressed_color", "font_focus_color"]:
-		if p.is_trapped():
-			_fold_button.add_theme_color_override(state, PixelArt.HEART_RED)
-		else:
-			_fold_button.remove_theme_color_override(state)
+	_fold_button.text_color = PixelArt.HEART_RED if p.is_trapped() else Color.TRANSPARENT
 	_call_button.text = "CHECK" if to_call == 0 else "ALL IN" if to_call >= p.chips else "CALL $%d" % to_call
 
 	var can_raise := p.chips > to_call

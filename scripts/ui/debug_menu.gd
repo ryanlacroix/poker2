@@ -88,7 +88,7 @@ func _ready() -> void:
 
 
 static func _add_button(container: Container, text: String, on_pressed: Callable) -> void:
-	var button := Button.new()
+	var button := MarqueeButton.new()
 	button.text = text
 	button.custom_minimum_size = BUTTON_SIZE
 	button.pressed.connect(on_pressed)
