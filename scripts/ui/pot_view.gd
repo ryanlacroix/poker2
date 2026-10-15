@@ -19,6 +19,10 @@ const GROWTH_RATE := 1.5
 ## Once the pot empties, how long the display takes to fade out, and how far it sinks meanwhile.
 const FADE_SECONDS := 0.35
 const FADE_FALL := 10.0
+## The amount's hard-edged shadow, down and to the right: 1 pixel at the resting size, plus a pixel
+## for every this many points the text has grown.
+const SHADOW_COLOR := Color.BLACK
+const SHADOW_STEP := 16.0
 
 var amount := 0:
 	set(value):
@@ -109,5 +113,7 @@ func _draw_pot(pot_amount: int, k: float, base_size: int, tint: Color) -> void:
 
 	# Baseline that vertically centres the text's cap height on the icon.
 	var baseline := floorf(mid_y + (font.get_ascent(text_size) - font.get_descent(text_size)) / 2)
-	draw_string(font, Vector2(left + icon.x + GAP, baseline), text,
-		HORIZONTAL_ALIGNMENT_LEFT, -1, text_size, growth_color(k) * tint)
+	var at := Vector2(left + icon.x + GAP, baseline)
+	var shadow := float(maxi(1, roundi(text_size / SHADOW_STEP)))
+	draw_string(font, at + Vector2(shadow, shadow), text, HORIZONTAL_ALIGNMENT_LEFT, -1, text_size, SHADOW_COLOR * tint)
+	draw_string(font, at, text, HORIZONTAL_ALIGNMENT_LEFT, -1, text_size, growth_color(k) * tint)
