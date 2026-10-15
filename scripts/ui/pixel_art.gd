@@ -440,6 +440,17 @@ static func draw_colored(canvas: CanvasItem, pattern: Array, colors: Dictionary,
 				canvas.draw_rect(Rect2(origin + Vector2(x, y) * px, Vector2(px, px)), color)
 
 
+## A multi-colour pattern as a texture, one texel per cell (draw it scaled up with nearest
+## filtering); characters missing from [param colors] are transparent.
+static func texture(pattern: Array, colors: Dictionary) -> ImageTexture:
+	var image := Image.create_empty(pattern[0].length(), pattern.size(), false, Image.FORMAT_RGBA8)
+	for y in pattern.size():
+		var row: String = pattern[y]
+		for x in row.length():
+			image.set_pixel(x, y, colors.get(row[x], Color.TRANSPARENT))
+	return ImageTexture.create_from_image(image)
+
+
 ## Fills every non-'.' cell of [param pattern] with one colour (a glyph or a silhouette).
 static func draw(canvas: CanvasItem, pattern: Array, origin: Vector2, px: int, color: Color) -> void:
 	for y in pattern.size():

@@ -1065,15 +1065,28 @@ func _show_steal_modal(victim: PokerPlayer) -> void:
 	title.add_theme_font_size_override("font_size", 32)
 	title.add_theme_color_override("font_color", PixelArt.HEART_RED)
 	box.add_child(title)
-	var modal: Control
+	var buttons: Array[MarqueeButton] = []
 	for held in victim.items:
 		var button := _new_button("STEAL %s" % Item.display_name(held.kind))
-		button.pressed.connect(func() -> void:
+		var art := SeatView.item_art(held.kind)
+		button.side_icon = PixelArt.texture(art[0], art[1])
+		buttons.append(button)
+		box.add_child(button)
+	# As tall as each other, whichever icon is tallest.
+	var height := 0.0
+	for button in buttons:
+		height = maxf(height, button.custom_minimum_size.y)
+	for button in buttons:
+		button.custom_minimum_size.y = height
+	var modal := _show_modal(box)
+	# Connected once the modal exists: lambdas capture locals by value, so one made earlier would
+	# only ever see it as null.
+	for i in buttons.size():
+		var held := victim.items[i]
+		buttons[i].pressed.connect(func() -> void:
 			modal.queue_free()
 			_submit_item_decision(ItemDecision.new(Item.Action.USE, _using, victim, held)))
-		box.add_child(button)
-	modal = _show_modal(box)
-	box.get_child(1).grab_focus()
+	buttons[0].grab_focus()
 
 
 ## Someone fired a gun: the screen darkens, a tracer joins the two portraits and the target
