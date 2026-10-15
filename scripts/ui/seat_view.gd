@@ -103,6 +103,8 @@ var hidden_item: HeldItem:
 
 # Scrolled through to make the caster's hex fire lick and flicker.
 static var _fire_noise: FastNoiseLite
+# Scrolled through, slowly, for the cordyceps fuzz on an infected seat.
+static var _fuzz_noise: FastNoiseLite
 
 
 static func size_for(p_style: Style) -> Vector2:
@@ -414,6 +416,8 @@ func _draw() -> void:
 	# Brass trim with gilt corner brackets.
 	draw_rect(backing, Color(look.brass, 0.35), false, 1)
 	Ornament.draw_corner_brackets(self, backing, Color(look.trim, 0.8), 4)
+	if _infected():
+		_draw_fuzz(backing)
 	_portrait_layer.queue_redraw()
 	_draw_hearts()
 	if _is_dealer:
@@ -907,6 +911,35 @@ func _draw_bomb(c: CanvasItem, frame: Rect2, dropped: float) -> void:
 	for key: String in PixelArt.BOMB_COLORS:
 		colors[key] = Color(PixelArt.BOMB_COLORS[key], fade)
 	PixelArt.draw_colored(c, art, colors, at.floor(), PX)
+
+
+## White cordyceps fuzz over an infected seat's [param backing], under everything else on it:
+## soft clumps of mould in pixel cells, thicker toward the edges as if creeping in from them,
+## slowly shifting.
+func _draw_fuzz(backing: Rect2) -> void:
+	const CELL := 2
+	## How far in from the edges the fuzz is thickened, and how much.
+	const EDGE_REACH := 18.0
+	const EDGE_WEIGHT := 0.45
+	## Cells below this much fuzz are left clear; denser ones are whiter, up to MAX_ALPHA.
+	const THRESHOLD := 0.62
+	const MAX_ALPHA := 0.5
+	if _fuzz_noise == null:
+		_fuzz_noise = FastNoiseLite.new()
+		_fuzz_noise.frequency = 0.18
+		_fuzz_noise.fractal_octaves = 3
+	var t := Time.get_ticks_msec() / 1000.0 * 6.0
+	var offset := float(player.seat * 97) # so infected seats don't fuzz in lockstep
+	for y in range(0, int(backing.size.y), CELL):
+		for x in range(0, int(backing.size.x), CELL):
+			var edge := minf(minf(x, backing.size.x - x), minf(y, backing.size.y - y))
+			var edge_k := 1.0 - clampf(edge / EDGE_REACH, 0.0, 1.0)
+			var n := _fuzz_noise.get_noise_3d(x / CELL + offset, y / CELL, t) * 0.5 + 0.5
+			var v := n * 0.8 + edge_k * EDGE_WEIGHT
+			if v < THRESHOLD:
+				continue
+			var alpha := minf((v - THRESHOLD) * 1.6, MAX_ALPHA)
+			draw_rect(Rect2(backing.position + Vector2(x, y), Vector2(CELL, CELL)), Color(1, 1, 1, alpha))
 
 
 ## Cordyceps sprouting from the head: a few orange fungal stalks rising out of the top of the
