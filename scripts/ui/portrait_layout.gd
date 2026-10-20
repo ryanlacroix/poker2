@@ -7,18 +7,16 @@ extends RefCounted
 ## NPCs (up to a limit) and around the board; extra width widens the table. Safe-area insets keep
 ## clear of notches and gesture bars.
 
-## A seat (top-left corner + style) and where its stack/bet piles sit on the table.
+## A seat (top-left corner + style) and where its bet pile sits on the table.
 class SeatSlot:
 	var seat_position: Vector2
 	var style: SeatView.Style
 	var pile_center: Vector2
-	var vertical_piles: bool
 
-	func _init(p_seat_position: Vector2, p_style: SeatView.Style, p_pile_center: Vector2, p_vertical_piles: bool) -> void:
+	func _init(p_seat_position: Vector2, p_style: SeatView.Style, p_pile_center: Vector2) -> void:
 		seat_position = p_seat_position
 		style = p_style
 		pile_center = p_pile_center
-		vertical_piles = p_vertical_piles
 
 
 const BASE_SIZE := Vector2(360, 672)
@@ -92,18 +90,18 @@ func _init(viewport: Vector2, opponent_count: int, safe_top := 0.0, safe_bottom 
 	# Columns hug the screen edges; each NPC's piles sit on the table right beside them.
 	var left_x := MARGIN
 	var right_x := viewport.x - MARGIN - compact.x
-	var bounds := TableScene.vertical_pile_unit_bounds()
+	var bounds := TableScene.pile_bounds()
 	var left_pile_x := left_x + compact.x + 4 - bounds.position.x
 	var right_pile_x := right_x - 4 - bounds.end.x
-	var pile_dy := 2 - bounds.position.y # unit top level with the portrait
+	var pile_dy := 2 - bounds.position.y # pile top level with the portrait
 
 	var slots: Array[SeatSlot] = []
 	slots.resize(6)
 	for row in 3:
 		slots[2 - row] = SeatSlot.new(Vector2(left_x, row_y[row]), SeatView.Style.COMPACT_LEFT,
-			Vector2(left_pile_x, row_y[row] + pile_dy), true)
+			Vector2(left_pile_x, row_y[row] + pile_dy))
 		slots[3 + row] = SeatSlot.new(Vector2(right_x, row_y[row]), SeatView.Style.COMPACT_RIGHT,
-			Vector2(right_pile_x, row_y[row] + pile_dy), true)
+			Vector2(right_pile_x, row_y[row] + pile_dy))
 	for i: int in SLOTS_FOR_COUNT[opponent_count - 1]:
 		opponents.append(slots[i])
 
@@ -116,9 +114,9 @@ func _init(viewport: Vector2, opponent_count: int, safe_top := 0.0, safe_bottom 
 	var table_top := floorf(header.end.y + (top - 2 - header.end.y) / 2)
 	table = Rect2(2, table_top, viewport.x - 4, human_seat.y - 2 - table_top)
 
-	var pair_bounds := TableScene.horizontal_pile_unit_bounds()
+	var pair_bounds := TableScene.pile_bounds()
 	var human_piles := Vector2(viewport.x - MARGIN - 4 - pair_bounds.end.x, table.end.y - 2 - pair_bounds.end.y)
-	human = SeatSlot.new(human_seat, SeatView.Style.WIDE, human_piles, false)
+	human = SeatSlot.new(human_seat, SeatView.Style.WIDE, human_piles)
 
 	# Large board centred in the space between the NPCs and the bottom, with the
 	# pot / NEXT HAND button under it, kept clear of the action panel and the human's piles.

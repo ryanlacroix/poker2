@@ -3,12 +3,6 @@ extends Control
 ## Visual layer for a poker table. Builds the UI, owns a [PokerTable], and
 ## translates its signals into on-screen updates and human input back into decisions.
 
-# Stack pile (no label) and bet pile (with label) offsets from a pair's centre.
-const STACK_PILE_OFFSET := Vector2(-22, 0)
-const BET_PILE_OFFSET := Vector2(22, 0)
-const STACK_PILE_OFFSET_VERTICAL := Vector2(0, -19)
-const BET_PILE_OFFSET_VERTICAL := Vector2(0, 19)
-
 const CHIP_CHANGE_HOLD := 0.6
 const CHIP_CHANGE_FADE := 0.4
 const CHIP_CHANGE_RISE := 10.0
@@ -84,7 +78,6 @@ var _table_name_label: Label # the gilded rule in the header runs on from its en
 var _felt_texture: Texture2D
 var _felt_inner_texture: Texture2D
 var _seats: Array[SeatView] = []
-var _stack_piles: Array[ChipPileView] = []
 var _bet_piles: Array[ChipPileView] = []
 var _community: Array[CardView] = []
 var _winners := {} # PokerPlayer -> true
@@ -145,20 +138,9 @@ var _hex_modal: Control # the hex being cast, open until CAST is pressed
 var _to_call := 0
 
 
-## Area a stack-over-bet pile pair can cover, relative to its centre.
-static func vertical_pile_unit_bounds() -> Rect2:
-	return _pair_bounds(STACK_PILE_OFFSET_VERTICAL, BET_PILE_OFFSET_VERTICAL)
-
-
-## Area a stack-beside-bet pile pair can cover, relative to its centre.
-static func horizontal_pile_unit_bounds() -> Rect2:
-	return _pair_bounds(STACK_PILE_OFFSET, BET_PILE_OFFSET)
-
-
-static func _pair_bounds(stack_offset: Vector2, bet_offset: Vector2) -> Rect2:
-	var stack := ChipPileView.bounds_for(false)
-	var bet := ChipPileView.bounds_for(true)
-	return Rect2(stack.position + stack_offset, stack.size).merge(Rect2(bet.position + bet_offset, bet.size))
+## Area a seat's bet pile can cover, relative to its centre.
+static func pile_bounds() -> Rect2:
+	return ChipPileView.bounds_for(true)
 
 
 func _ready() -> void:
@@ -338,15 +320,9 @@ func _build_ui() -> void:
 		_seats.append(seat)
 		_shown_chips.append(player.chips)
 
-		# Stack (whole bankroll) left/above, this hand's bet right/below.
-		var stack := ChipPileView.new()
-		stack.position = slot.pile_center + (STACK_PILE_OFFSET_VERTICAL if slot.vertical_piles else STACK_PILE_OFFSET)
-		stack.show_label = false
-		add_child(stack)
-		stack.amount = player.chips # on the table from the start, before the intro
-		_stack_piles.append(stack)
+		# This hand's bet, on the table beside the seat.
 		var bet := ChipPileView.new()
-		bet.position = slot.pile_center + (BET_PILE_OFFSET_VERTICAL if slot.vertical_piles else BET_PILE_OFFSET)
+		bet.position = slot.pile_center
 		add_child(bet)
 		_bet_piles.append(bet)
 
@@ -1405,7 +1381,6 @@ func _refresh_seats() -> void:
 		if chips != _shown_chips[i]:
 			_show_chip_change(_seats[i], chips - _shown_chips[i])
 		_shown_chips[i] = chips
-		_stack_piles[i].amount = _table.players[i].chips
 		_bet_piles[i].amount = _table.players[i].total_bet
 	var pot := _table.pot()
 	_pot.amount = pot
