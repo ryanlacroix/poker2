@@ -4,6 +4,10 @@ extends Control
 ## node's rect. New men [method march_in] from [member enter_from] (off-screen), running in one
 ## after another; once there, each one dawdles, then ambles to some spot nearby, and so on. Past
 ## [constant MAX_SHOWN], newcomers melt into the crowd and the army's size shows in digits.
+## For a battle, the men are handed over ([method disband]) and survivors come back ([method rejoin]).
+
+## Every man on his way in has arrived.
+signal settled
 
 ## Stick men are drawn at this many screen pixels per cell.
 const PX := 2
@@ -56,6 +60,39 @@ func _ready() -> void:
 	set_process(false)
 
 
+## No one's on his way in.
+func is_settled() -> bool:
+	return _men.all(func(man: Man) -> bool: return man.arrived)
+
+
+## The army leaves to fight: [param n] men's top-left corners in the parent's coordinates, those
+## in the crowd where they stand and the rest somewhere on the army's patch. The patch is left empty.
+func disband(n: int) -> Array[Vector2]:
+	var points: Array[Vector2] = []
+	for man in _men:
+		if points.size() < n:
+			points.append(position + man.at)
+	while points.size() < n:
+		points.append(position + _random_spot())
+	_men.clear()
+	count = 0
+	queue_redraw()
+	return points
+
+
+## Men at [param points] (top-left corners, in the parent's coordinates) run back to the
+## army's patch, counted in as they arrive.
+func rejoin(points: Array[Vector2]) -> void:
+	for point in points:
+		var man := Man.new()
+		man.at = point - position
+		man.target = _random_spot()
+		_men.append(man)
+	set_process(true)
+	if points.is_empty():
+		settled.emit()
+
+
 ## Sends [param n] men running in, the first after [param delay] seconds.
 func march_in(n: int, delay := 0.0) -> void:
 	var set_off := delay
@@ -95,6 +132,8 @@ func _process(delta: float) -> void:
 			# The crowd's full: he melts into it.
 			if _shown() > MAX_SHOWN:
 				_men.erase(man)
+			if is_settled():
+				settled.emit()
 	queue_redraw()
 
 

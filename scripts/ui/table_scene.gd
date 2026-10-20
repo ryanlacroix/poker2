@@ -444,6 +444,8 @@ func _build_ui() -> void:
 	_debug_menu.explode_npc.connect(_debug_explode_npc)
 	_debug_menu.set_npc_chips.connect(_debug_set_npc_chips)
 	_debug_menu.lose_heart.connect(_debug_lose_heart)
+	_debug_menu.all_swords.connect(func() -> void: _table.all_swords_next_hand = true)
+	_debug_menu.give_armies.connect(_debug_give_armies)
 	_debug_menu.win_table.connect(func() -> void: _show_game_over(_table.players[0]))
 
 
@@ -623,6 +625,7 @@ func _connect_table() -> void:
 			seat.set_status("")
 		for view in _community:
 			view.set_card(null, false)
+			view.sword = false
 		_winners.clear()
 		_winning_cards.clear()
 		_scoring_cards.clear()
@@ -642,6 +645,7 @@ func _connect_table() -> void:
 		var delay := 0.0
 		for i in _community.size():
 			var card: Card = cards[i] if i < cards.size() else null
+			_community[i].sword = card != null and card in _table.sword_cards
 			if card != null and card != _community[i].card:
 				_community[i].set_card(card, true, delay)
 				delay += BOARD_DEAL_STAGGER
@@ -676,6 +680,7 @@ func _connect_table() -> void:
 	_table.armies_raised.connect(func(raised: Dictionary) -> void:
 		for p: PokerPlayer in raised:
 			_armies[p.seat].march_in(raised[p], CoinShower.SECONDS))
+	_table.battle_started.connect(_on_battle_started)
 	_table.item_gained.connect(func(player: PokerPlayer, item: Item.Kind) -> void:
 		_seats[player.seat].refresh()
 		_item_news.append(Item.gained_text(item, player.display_name)))
@@ -947,6 +952,14 @@ func _debug_set_npc_chips(amount: int) -> void:
 	_enter_target_mode(npcs, false, "PICK AN NPC")
 
 
+## Debug: every player still in gets [param amount] armies, who run in at once.
+func _debug_give_armies(amount: int) -> void:
+	for p in _table.players:
+		if PokerTable.in_game(p) and not p.blown_up:
+			p.armies += amount
+			_armies[p.seat].march_in(amount)
+
+
 ## Debug: adds [param amount] to the human's stack.
 func _debug_give_chips(amount: int) -> void:
 	_table.players[0].chips += amount
@@ -1201,6 +1214,62 @@ func _on_item_stolen(caster: PokerPlayer, target: PokerPlayer, item: HeldItem) -
 	_seats[caster.seat].hidden_item = item
 	_seats[caster.seat].set_status("STOLE %s" % Item.display_name(item.kind), PixelArt.GOLD)
 	_seats[caster.seat].refresh()
+
+
+## A sword card won the hand. Once the winning-hand banner's done and every army's men are home,
+## the two fighting players' seats are outlined red while their armies fight it out (see
+## [BattleView]); the survivors run home, then a modal names the winner, and OK carries on.
+func _on_battle_started(a: PokerPlayer, b: PokerPlayer, a_armies: int, b_armies: int, rounds: Array) -> void:
+	if _win_banner.visible:
+		await _win_banner.finished
+	for army in _armies:
+		if not army.is_settled():
+			await army.settled
+	var fighters: Array[PokerPlayer] = [a, b]
+	for p in fighters:
+		_seats[p.seat].set_battling(true)
+	var battle := BattleView.new()
+	battle.sides = [_armies[a.seat].disband(a_armies), _armies[b.seat].disband(b_armies)]
+	battle.rounds = rounds
+	UiTheme.add_at(self, battle, Vector2.ZERO, get_viewport_rect().size)
+	var result: Array = await battle.finished
+	var winner := fighters[result[0]]
+	var survivors: Array[Vector2] = result[1]
+	var home := _armies[winner.seat]
+	home.rejoin(survivors)
+	if not home.is_settled():
+		await home.settled
+	for p in fighters:
+		_seats[p.seat].set_battling(false)
+	_show_battle_result(winner, fighters[1 - result[0]], survivors.size())
+
+
+## Who won a battle, and with how many men left; OK carries on to the item phase.
+func _show_battle_result(winner: PokerPlayer, loser: PokerPlayer, survivors: int) -> void:
+	var box := VBoxContainer.new()
+	var title := Label.new()
+	title.text = "VICTORY!" if winner.is_human() else "DEFEAT!" if loser.is_human() else "WAR!"
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	title.add_theme_font_size_override("font_size", 32)
+	title.add_theme_color_override("font_color", PixelArt.HEART_RED if loser.is_human() else PixelArt.GOLD)
+	box.add_child(title)
+	var detail := Label.new()
+	detail.text = "%s wiped out %s, with %d %s left standing." % [
+		"Your army" if winner.is_human() else "%s's army" % winner.display_name,
+		"yours" if loser.is_human() else "%s's" % loser.display_name,
+		survivors, "man" if survivors == 1 else "men"]
+	detail.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	detail.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	detail.custom_minimum_size.x = HEX_MODAL_TEXT_WIDTH
+	box.add_child(detail)
+	var ok := _new_button("OK")
+	box.add_child(ok)
+	var modal := _show_modal(box)
+	# Connected once the modal exists: lambdas capture locals by value.
+	ok.pressed.connect(func() -> void:
+		modal.queue_free()
+		_table.end_battle())
+	ok.grab_focus()
 
 
 ## A boom trap went off on [param victim]: see [method _blow_up_seat].

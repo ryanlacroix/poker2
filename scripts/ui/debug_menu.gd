@@ -22,6 +22,11 @@ signal set_npc_chips(amount: int)
 signal fizzle_hexes
 ## Emitted when EXPLODE NPC is picked; the menu closes itself.
 signal explode_npc
+## Emitted when ALL SWORDS is picked (every board card next hand bears a sword); the menu
+## closes itself.
+signal all_swords
+## Emitted when GIVE ARMIES is picked (every player still in gets that many); the menu closes itself.
+signal give_armies(amount: int)
 ## Emitted when WIN TABLE is picked (shows the win screen, to reach the next table); the
 ## menu closes itself.
 signal win_table
@@ -30,6 +35,8 @@ signal win_table
 const MODAL_Z := 10
 ## Chips handed over by GIVE $.
 const GIVE_CHIPS := 1000
+## Armies handed to every player by GIVE ARMIES.
+const GIVE_ARMIES := 10
 ## What SET NPC $ sets the picked NPC's stack to.
 const SET_NPC_CHIPS := 50
 ## Size of each action button; they're laid out in two columns, with CLOSE under them.
@@ -82,6 +89,8 @@ func _ready() -> void:
 	_add_button(grid, "FIZZLE ALL HEXES", _picked(fizzle_hexes.emit))
 	_add_button(grid, "EXPLODE NPC", _picked(explode_npc.emit))
 	_add_button(grid, "SET NPC $%d" % SET_NPC_CHIPS, _picked(set_npc_chips.emit.bind(SET_NPC_CHIPS)))
+	_add_button(grid, "ALL SWORDS", _picked(all_swords.emit))
+	_add_button(grid, "GIVE %d ARMIES" % GIVE_ARMIES, _picked(give_armies.emit.bind(GIVE_ARMIES)))
 	_add_button(grid, "WIN TABLE", _picked(win_table.emit))
 	# Across both columns.
 	_add_button(box, "CLOSE", hide)

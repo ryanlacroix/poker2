@@ -17,6 +17,14 @@ signal pot_awarded(winner: PokerPlayer, amount: int, hand_name: String)
 ## Players still in at the end of a hand raised armies by the hand they ended with: a Dictionary of
 ## PokerPlayer -> how many they raised (only those who raised any). Not emitted if nobody did.
 signal armies_raised(raised: Dictionary)
+## A sword card was in the main pot's winning hand, so the two biggest armies went to war:
+## [param a] fielded [param a_armies] men against [param b]'s [param b_armies]. Each of
+## [param rounds] is a round of duels, an Array of bools (true where [param a]'s man won), one
+## per man on the smaller side, each paired with one from the other side; losers die, and the
+## winners and anyone left unpaired fight the next round. It ends when one side is wiped out (their armies are already updated).
+## The table then waits for [method end_battle] (when [member wait_for_next_hand] is on) or
+## [member battle_delay].
+signal battle_started(a: PokerPlayer, b: PokerPlayer, a_armies: int, b_armies: int, rounds: Array)
 ## A player picked up an item at the end of a hand.
 signal item_gained(player: PokerPlayer, item: Item.Kind)
 signal hand_finished
@@ -112,6 +120,8 @@ var overload_delay := 1.0
 var overload_charge_delay := 1.0
 ## Pause while a hex that fizzled sputters out.
 var hex_fizzle_delay := 0.9
+## Pause for a battle when [member wait_for_next_hand] is off.
+var battle_delay := 3.0
 ## 0 = unlimited.
 var max_hands := 0
 ## Pause after each hand for the view: before the item phase (until [method begin_item_phase])
@@ -121,6 +131,12 @@ var wait_for_next_hand := false
 ## Chance, at the end of each hand, that each empty-handed player still in the game gets a random item.
 ## TESTING: raised to 1 in 2 from the intended 1 in 6.
 var item_chance := 1.0 / 2
+## Chance that each card dealt to the board bears a sword (see [signal battle_started]).
+var sword_chance := 0.1
+## Debug: every card dealt to the board next hand bears a sword.
+var all_swords_next_hand := false
+## This hand's board cards that bear swords.
+var sword_cards: Array[Card] = []
 
 var players: Array[PokerPlayer] = []
 var community: Array[Card] = []
@@ -136,6 +152,11 @@ var _human_decision: Completion
 var _next_hand: Completion
 var _item_phase: Completion
 var _human_item_decision: Completion
+var _battle: Completion
+## A sword card was in a winning hand this hand.
+var _battle_pending := false
+## Every board card dealt this hand bears a sword (see [member all_swords_next_hand]).
+var _all_swords := false
 ## The view has finished showing this hand's end (see [method _wait_for_view]).
 var _view_caught_up := false
 var _cancelled := false
@@ -171,6 +192,12 @@ func continue_to_next_hand() -> void:
 func begin_item_phase() -> void:
 	if _item_phase:
 		_item_phase.set_result()
+
+
+## Called by the UI once it has finished showing a battle.
+func end_battle() -> void:
+	if _battle:
+		_battle.set_result()
 
 
 ## Called by the UI with the human's choice on their item turn.
@@ -403,6 +430,8 @@ func start_game() -> void:
 	while _game_continues():
 		await _play_hand()
 		_end_cordyceps()
+		if _battle_pending and _game_continues():
+			await _fight_battle()
 		if players.any(func(p: PokerPlayer) -> bool: return p.is_trapped()):
 			await _wait_for_view()
 			await _settle_bombs()
@@ -433,6 +462,10 @@ func _play_hand() -> void:
 	for p in players:
 		p.reset_for_hand()
 	community.clear()
+	sword_cards.clear()
+	_battle_pending = false
+	_all_swords = all_swords_next_hand
+	all_swords_next_hand = false
 	_deck.reset()
 
 	var seated := func(p: PokerPlayer) -> bool: return not p.is_out
@@ -466,7 +499,10 @@ func _play_hand() -> void:
 		_start_street(next)
 		var n := 3 if next == Poker.Street.FLOP else 1
 		for i in n:
-			community.append(_deck.draw())
+			var card := _deck.draw()
+			community.append(card)
+			if _all_swords or randf() < sword_chance:
+				sword_cards.append(card)
 		community_changed.emit(community)
 		await _wait(deal_delay)
 		if _count(_can_act) >= 2:
@@ -632,6 +668,9 @@ func _resolve_hand() -> void:
 		var share := amount / winners.size()
 		var remainder := amount % winners.size()
 		for w in winners:
+			# Only the main pot's winning hand (the best at the table) can start a battle.
+			if i == 0 and _has_sword(w):
+				_battle_pending = true
 			var won := share + remainder
 			remainder = 0
 			w.chips += won
@@ -827,6 +866,50 @@ func _overload_target(caster: PokerPlayer, target: PokerPlayer) -> void:
 
 ## End of hand: each player still in the game with a free hand may pick up a random item.
 ## Players whose hands are full don't roll.
+## Whether a sword card is among the cards making [param p]'s hand (kickers don't count).
+func _has_sword(p: PokerPlayer) -> bool:
+	if sword_cards.is_empty():
+		return false
+	var cards := p.hole_cards.duplicate()
+	cards.append_array(community)
+	return HandEvaluator.scoring_cards(HandEvaluator.best_five(cards)).any(
+		func(c: Card) -> bool: return c in sword_cards)
+
+
+## The two biggest armies (ties broken at random) fight it out: see [signal battle_started].
+func _fight_battle() -> void:
+	var armed: Array[PokerPlayer] = []
+	armed.assign(players.filter(func(p: PokerPlayer) -> bool:
+		return in_game(p) and not p.blown_up and p.armies > 0))
+	if armed.size() < 2:
+		return
+	armed.shuffle()
+	armed.sort_custom(func(x: PokerPlayer, y: PokerPlayer) -> bool: return x.armies > y.armies)
+	var a := armed[0]
+	var b := armed[1]
+	var a_armies := a.armies
+	var b_armies := b.armies
+	var rounds: Array = []
+	while a.armies > 0 and b.armies > 0:
+		var duels: Array[bool] = []
+		for i in mini(a.armies, b.armies):
+			duels.append(randf() < 0.5)
+		for a_won in duels:
+			if a_won:
+				b.armies -= 1
+			else:
+				a.armies -= 1
+		rounds.append(duels)
+	if wait_for_next_hand:
+		_battle = Completion.new()
+		battle_started.emit(a, b, a_armies, b_armies, rounds)
+		await _battle.wait()
+		_battle = null
+	else:
+		battle_started.emit(a, b, a_armies, b_armies, rounds)
+		await _wait(battle_delay)
+
+
 ## Everyone who didn't fold raises armies by the best hand their cards make with the board.
 func _raise_armies() -> void:
 	var raised := {}

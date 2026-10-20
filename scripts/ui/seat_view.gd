@@ -80,6 +80,7 @@ var _is_dealer := false
 var _is_active := false
 ## The your-turn outline's opacity, faded toward 1 or 0 as the turn comes and goes.
 var _active_alpha := 0.0
+var _battling := false
 var _active_tween: Tween
 var _reveal := false
 var _is_winner := false
@@ -255,6 +256,12 @@ func set_active(value: bool) -> void:
 	_active_tween.tween_method(func(alpha: float) -> void:
 		_active_alpha = alpha
 		_outline_layer.queue_redraw(), _active_alpha, 1.0 if value else 0.0, ACTIVE_FADE_SECONDS)
+
+
+## A battle: a red outline round the seat, over any gold one.
+func set_battling(value: bool) -> void:
+	_battling = value
+	_outline_layer.queue_redraw()
 
 
 func set_reveal(value: bool) -> void:
@@ -433,9 +440,9 @@ func _draw() -> void:
 ## Pixel hearts (2x) on the line under the name: full for lives left, empty for lost.
 ## Two pixels thick, just outside the seat's backing.
 func _draw_active_outline() -> void:
-	if _active_alpha <= 0:
+	if _active_alpha <= 0 and not _battling:
 		return
-	var outline := Color(PixelArt.GOLD, _active_alpha)
+	var outline := PixelArt.HEART_RED if _battling else Color(PixelArt.GOLD, _active_alpha)
 	_outline_layer.draw_rect(Rect2(Vector2(-2, -2), seat_size() + Vector2(4, 4)), outline, false, 1)
 	_outline_layer.draw_rect(Rect2(Vector2(-3, -3), seat_size() + Vector2(6, 6)), outline, false, 1)
 

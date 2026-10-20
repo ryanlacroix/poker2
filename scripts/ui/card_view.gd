@@ -17,6 +17,28 @@ const FLY_SECONDS := 0.25
 ## rests higher (see [member resting_z]) keeps its own.
 const FLY_Z := SeatView.DARKEN_Z + 2
 
+## A see-through sword over the card's face: a sword card (see [signal PokerTable.battle_started]).
+const SWORD: Array[String] = [
+	"....o....",
+	"...oWo...",
+	"..oBWBo..", "..oBWBo..", "..oBWBo..", "..oBWBo..", "..oBWBo..", "..oBWBo..",
+	"..oBWBo..", "..oBWBo..", "..oBWBo..", "..oBWBo..", "..oBWBo..", "..oBWBo..",
+	"..oBWBo..", "..oBWBo..", "..oBWBo..", "..oBWBo..", "..oBWBo..",
+	"ooooooooo",
+	"oGGGGGGGo",
+	"ooooooooo",
+	"...oHo...", "...oHo...", "...oHo...", "...oHo...", "...oHo...",
+	"..oGGGo..",
+	"..ooooo..",
+]
+const SWORD_COLORS := {
+	"o": Color(PixelArt.INK, 0.4),
+	"B": Color(0.82, 0.86, 0.92, 0.55),
+	"W": Color(1, 1, 1, 0.65),
+	"G": Color(PixelArt.GOLD, 0.6),
+	"H": Color(0.45, 0.28, 0.12, 0.55),
+}
+
 var show_empty_slot := false
 ## Whole-number size multiplier; the pixel art is drawn scaled so it stays crisp. Set before adding.
 var pixel_scale := 1
@@ -24,6 +46,11 @@ var pixel_scale := 1
 var card: Card
 ## Z index the card returns to after flying in.
 var resting_z := 0
+## Shows the sword over the card's face.
+var sword := false:
+	set(value):
+		sword = value
+		queue_redraw()
 
 var _face_up := false
 var _highlight := Highlight.NONE
@@ -154,6 +181,9 @@ func _draw() -> void:
 		draw_set_transform(Vector2(0, lift), 0, Vector2.ONE * pixel_scale)
 	else:
 		_draw_card(rect)
+	if sword and _face_up:
+		var origin := ((CARD_SIZE - Vector2(SWORD[0].length(), SWORD.size())) / 2).floor()
+		PixelArt.draw_colored(self, SWORD, SWORD_COLORS, origin, 1)
 
 	if _highlight == Highlight.WINNING:
 		draw_rect(rect.grow(1), PixelArt.GOLD, false, 1)

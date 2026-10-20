@@ -730,6 +730,7 @@ func _run_simulation() -> void:
 	table.between_hands_delay = 0
 	table.max_hands = 300
 	table.wait_for_next_hand = true
+	table.sword_chance = 0.5
 	add_child(table)
 	# One NPC per opponent slot plus one in the human's seat, so the game runs unattended.
 	var seated := brains.duplicate()
@@ -754,7 +755,7 @@ func _run_simulation() -> void:
 			_check(p.armies == expected_armies, "%s raised the right armies in hand %d" % [p.display_name, table.hand_number])
 			armies_before[p] = p.armies)
 	# Lambdas capture locals by value, so the counters live in here.
-	var counts := {"shots": 0, "stimpaks": 0, "hexes": 0, "pauses": 0}
+	var counts := {"shots": 0, "stimpaks": 0, "hexes": 0, "pauses": 0, "battles": 0}
 	# Stand in for the view: start item turns straight away, and count the shots fired.
 	table.waiting_for_item_phase.connect(table.begin_item_phase)
 	table.shot.connect(func(_s: PokerPlayer, _t: PokerPlayer, _result: Item.ShotResult) -> void:
@@ -763,6 +764,23 @@ func _run_simulation() -> void:
 		counts.stimpaks += 1)
 	table.hex_cast.connect(func(_c: PokerPlayer, _effect: Hex.Effect, _t: PokerPlayer, _slot: int) -> void:
 		counts.hexes += 1)
+	# Check each battle adds up, then stand in for the view's OK.
+	table.battle_started.connect(func(a: PokerPlayer, b: PokerPlayer, a_armies: int, b_armies: int, rounds: Array) -> void:
+		counts.battles += 1
+		_check(a_armies == armies_before[a] and b_armies == armies_before[b], "a battle fields everyone's armies")
+		_check(table.players.all(func(p: PokerPlayer) -> bool:
+			return p == a or p == b or p.armies <= mini(a_armies, b_armies) or not PokerTable.in_game(p) or p.blown_up),
+			"the two biggest armies go to war")
+		var left := [a_armies, b_armies]
+		for duels: Array in rounds:
+			_check(duels.size() == mini(left[0], left[1]), "every man on the smaller side duels")
+			for a_won: bool in duels:
+				left[1 if a_won else 0] -= 1
+		_check(left[0] == a.armies and left[1] == b.armies and (a.armies == 0) != (b.armies == 0),
+			"one side is wiped out and the other keeps its survivors")
+		armies_before[a] = a.armies
+		armies_before[b] = b.armies
+		table.end_battle())
 	# Stand in for the "next hand" button.
 	table.waiting_for_next_hand.connect(func() -> void:
 		counts.pauses += 1
@@ -770,7 +788,7 @@ func _run_simulation() -> void:
 	table.game_over.connect(func(winner: PokerPlayer) -> void:
 		# Every hand but the game-ending one should pause for the button.
 		_check(counts.pauses == table.hand_number - 1, "paused %d times over %d hands" % [counts.pauses, table.hand_number])
-		print("Simulated %d hands (%d gunshots, %d stimpaks, %d hexes), leader %s with %d" % [table.hand_number, counts.shots, counts.stimpaks, counts.hexes, winner.display_name, winner.chips])
+		print("Simulated %d hands (%d gunshots, %d stimpaks, %d hexes, %d battles), leader %s with %d" % [table.hand_number, counts.shots, counts.stimpaks, counts.hexes, counts.battles, winner.display_name, winner.chips])
 		print("ALL TESTS PASSED" if _failures == 0 else "%d FAILURE(S)" % _failures)
 		get_tree().quit(_failures))
 	table.start_game()
