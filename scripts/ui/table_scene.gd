@@ -79,6 +79,7 @@ var _felt_texture: Texture2D
 var _felt_inner_texture: Texture2D
 var _seats: Array[SeatView] = []
 var _bet_piles: Array[ChipPileView] = []
+var _armies: Array[ArmyView] = []
 var _community: Array[CardView] = []
 var _winners := {} # PokerPlayer -> true
 var _winning_cards := {} # Card -> true: winners' best five, kickers included
@@ -306,6 +307,15 @@ func _build_ui() -> void:
 	for i in _table.players.size():
 		var player := _table.players[i]
 		var slot := _layout.human if i == 0 else _layout.opponents[i - 1]
+		# The army first, so men running in pass behind the seat.
+		var army := ArmyView.new()
+		UiTheme.add_at(self, army, slot.army_rect.position, slot.army_rect.size)
+		# Off-screen on the nearer side, level with the formation's middle.
+		var enter_x := -ArmyView.MAN_SIZE.x * 2 if slot.army_rect.get_center().x < viewport_size.x / 2 \
+			else viewport_size.x + ArmyView.MAN_SIZE.x
+		army.enter_from = Vector2(enter_x, slot.army_rect.get_center().y) - army.position
+		_armies.append(army)
+
 		var seat := SeatView.new()
 		seat.player = player
 		var npc_portrait: Texture2D = player.brain.portrait if player.brain else null
@@ -662,6 +672,10 @@ func _connect_table() -> void:
 		_seats[player.seat].set_status(text)
 		_seats[player.seat].set_active(false))
 	_table.chips_changed.connect(_refresh_seats)
+	# The men set off once the pot's coins have landed.
+	_table.armies_raised.connect(func(raised: Dictionary) -> void:
+		for p: PokerPlayer in raised:
+			_armies[p.seat].march_in(raised[p], CoinShower.SECONDS))
 	_table.item_gained.connect(func(player: PokerPlayer, item: Item.Kind) -> void:
 		_seats[player.seat].refresh()
 		_item_news.append(Item.gained_text(item, player.display_name)))
@@ -1210,6 +1224,7 @@ func _blow_up_seat(victim: PokerPlayer) -> void:
 	boom.z_index = LIGHTNING_Z
 	boom.engulfed.connect(func() -> void:
 		seat.visible = false
+		_armies[victim.seat].visible = false
 		var mark := BurnMark.new()
 		var mark_size := (seat.size / BurnMark.BLOTCH).round()
 		UiTheme.add_at(self, mark, (seat.position - (mark_size - seat.size) / 2).round(), mark_size)

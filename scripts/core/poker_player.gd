@@ -22,6 +22,8 @@ var leech_drains_left := 0
 var trapped_by: PokerPlayer
 ## Whoever infected this player with cordyceps, or null if they aren't (see [constant Hex.Effect.CORDYCEPS]).
 var infected_by: PokerPlayer
+## Stick men raised by the hands they've played (see [constant PokerTable.ARMIES_FOR_CATEGORY]).
+var armies := 0
 ## Blown out of the game by a boom trap or shield overload: their seat is gone from the table.
 var blown_up := false
 

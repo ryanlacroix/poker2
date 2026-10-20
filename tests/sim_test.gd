@@ -739,11 +739,20 @@ func _run_simulation() -> void:
 		players.append(PokerPlayer.new("%s%d" % [seated[i].display_name, i], 1000, seated[i]))
 	table.setup(players)
 	var expected := _total_chips(table)
+	var armies_before := {}
 
 	table.hand_finished.connect(func() -> void:
 		var total := _total_chips(table)
 		_check(total == expected, "chips conserved after hand %d (%d != %d)" % [table.hand_number, total, expected])
-		_check(table.players.all(func(p: PokerPlayer) -> bool: return p.chips >= 0), "no negative stacks"))
+		_check(table.players.all(func(p: PokerPlayer) -> bool: return p.chips >= 0), "no negative stacks")
+		for p in table.players:
+			var expected_armies: int = armies_before.get(p, 0)
+			if p.in_hand():
+				var cards := p.hole_cards.duplicate()
+				cards.append_array(table.community)
+				expected_armies += PokerTable.ARMIES_FOR_CATEGORY[HandEvaluator.evaluate(cards)[0]]
+			_check(p.armies == expected_armies, "%s raised the right armies in hand %d" % [p.display_name, table.hand_number])
+			armies_before[p] = p.armies)
 	# Lambdas capture locals by value, so the counters live in here.
 	var counts := {"shots": 0, "stimpaks": 0, "hexes": 0, "pauses": 0}
 	# Stand in for the view: start item turns straight away, and count the shots fired.

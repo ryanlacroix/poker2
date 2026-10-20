@@ -14,6 +14,9 @@ signal chips_changed
 signal showdown(contenders: Array[PokerPlayer], scores: Dictionary)
 ## Hand name is "" if the pot was uncontested.
 signal pot_awarded(winner: PokerPlayer, amount: int, hand_name: String)
+## Players still in at the end of a hand raised armies by the hand they ended with: a Dictionary of
+## PokerPlayer -> how many they raised (only those who raised any). Not emitted if nobody did.
+signal armies_raised(raised: Dictionary)
 ## A player picked up an item at the end of a hand.
 signal item_gained(player: PokerPlayer, item: Item.Kind)
 signal hand_finished
@@ -73,6 +76,11 @@ signal game_over(leader: PokerPlayer)
 signal message(text: String)
 ## Never emitted: a coroutine that awaits it is parked until the table is freed.
 signal _never
+
+## Armies a hand of each [enum HandEvaluator.Category] raises: none for a high card, one for a
+## pair or two pair, then one more for each category up (two for three of a kind, three for a
+## straight, ... seven for a straight flush).
+const ARMIES_FOR_CATEGORY: Array[int] = [0, 1, 1, 2, 3, 4, 5, 6, 7]
 
 var small_blind := 10
 var big_blind := 20
@@ -465,6 +473,7 @@ func _play_hand() -> void:
 			await _betting_round(_next_seat(dealer_index, _can_act))
 
 	await _resolve_hand()
+	_raise_armies()
 	_hand_out_items()
 	hand_finished.emit()
 
@@ -818,6 +827,20 @@ func _overload_target(caster: PokerPlayer, target: PokerPlayer) -> void:
 
 ## End of hand: each player still in the game with a free hand may pick up a random item.
 ## Players whose hands are full don't roll.
+## Everyone who didn't fold raises armies by the best hand their cards make with the board.
+func _raise_armies() -> void:
+	var raised := {}
+	for p: PokerPlayer in players.filter(_in_hand):
+		var cards := p.hole_cards.duplicate()
+		cards.append_array(community)
+		var armies := ARMIES_FOR_CATEGORY[HandEvaluator.evaluate(cards)[0]]
+		if armies > 0:
+			p.armies += armies
+			raised[p] = armies
+	if not raised.is_empty():
+		armies_raised.emit(raised)
+
+
 func _hand_out_items() -> void:
 	for p in players:
 		if p.chips <= 0 or not p.has_free_hand() or randf() >= item_chance:
