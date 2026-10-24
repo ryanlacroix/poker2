@@ -708,7 +708,7 @@ func _connect_table() -> void:
 		for p: PokerPlayer in raised:
 			_armies[p.seat].march_in(raised[p], CoinShower.SECONDS))
 	_table.battle_started.connect(_on_battle_started)
-	_table.taxes_collected.connect(func(_paid: Dictionary) -> void: _notices.enqueue("Taxes collected"))
+	_table.taxes_collected.connect(func(_paid: Dictionary) -> void: _notices.enqueue("Taxes collected", true))
 	_table.item_gained.connect(func(player: PokerPlayer, item: Item.Kind) -> void:
 		_seats[player.seat].refresh()
 		_item_news.append(Item.gained_text(item, player.display_name)))

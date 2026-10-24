@@ -2,7 +2,8 @@ class_name NoticeBanner
 extends Control
 ## Caption-style notices: a translucent black, gilt-edged strip across the full width of the screen with
 ## white text on it. Queued messages play one at a time, each shown for [constant HOLD_TIME]
-## and then faded out. The node's rect is the strip.
+## and then faded out. A notice can have a little gold coin on either side of its text. The node's
+## rect is the strip.
 
 ## Emitted when the last queued notice has faded out (not when cut short by [method clear]).
 signal finished
@@ -10,9 +11,14 @@ signal finished
 const HOLD_TIME := 1.0
 const FADE_TIME := 0.4
 const STRIP_HEIGHT := 30.0
+## Coins beside the text: drawn at this many pixels per cell, this far from the text.
+const COIN_PX := 3
+const COIN_GAP := 6.0
 
-var _queue: Array[String] = []
+# Queued notices, each [text, with coins].
+var _queue: Array[Array] = []
 var _text := ""
+var _coins := false
 var _tween: Tween
 
 
@@ -21,8 +27,8 @@ func _ready() -> void:
 	visible = false
 
 
-func enqueue(text: String) -> void:
-	_queue.push_back(text)
+func enqueue(text: String, coins := false) -> void:
+	_queue.push_back([text, coins])
 	if not visible:
 		_show_next()
 
@@ -39,7 +45,9 @@ func _show_next() -> void:
 		visible = false
 		finished.emit()
 		return
-	_text = _queue.pop_front()
+	var notice: Array = _queue.pop_front()
+	_text = notice[0]
+	_coins = notice[1]
 	modulate = Color.WHITE
 	visible = true
 	queue_redraw()
@@ -61,3 +69,10 @@ func _draw() -> void:
 	var font_size := UiTheme.FONT_SIZE
 	var baseline := floorf((size.y + font.get_ascent(font_size) - font.get_descent(font_size)) / 2)
 	draw_string(font, Vector2(0, baseline), _text, HORIZONTAL_ALIGNMENT_CENTER, size.x, font_size, Color.WHITE)
+	if _coins:
+		var coin: Array = CoinShower.SPIN[0]
+		var coin_size := Vector2(coin[0].length(), coin.size()) * COIN_PX
+		var half_text := font.get_string_size(_text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x / 2
+		var y := floorf((size.y - coin_size.y) / 2)
+		for x: float in [size.x / 2 - half_text - COIN_GAP - coin_size.x, size.x / 2 + half_text + COIN_GAP]:
+			PixelArt.draw_colored(self, coin, CoinShower.COLORS, Vector2(floorf(x), y), COIN_PX)
