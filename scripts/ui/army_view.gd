@@ -45,6 +45,12 @@ const DODGE_RADIUS := 14.0
 const DODGE_SPEED := 60.0
 const DODGE_DISTANCE := 16.0
 const DODGE_CHOICES := 8
+## A [method glow]: a soft pool of gold light under each man's feet, and a fainter halo behind him,
+## fading away over [constant GLOW_SECONDS].
+const GLOW_SECONDS := 0.6
+const GLOW_COLOR := PixelArt.GOLD
+const GLOW_POOL_RADIUS := 7.0
+const GLOW_HALO_RADIUS := 8.0
 
 ## Where new men come from (local coordinates): off-screen, on the side they run in from.
 var enter_from: Vector2
@@ -55,6 +61,8 @@ var count := 0
 var avoid := Callable()
 
 var _men: Array[Man] = []
+## Seconds into the current [method glow]; -1 when not glowing.
+var _glow_age := -1.0
 
 
 ## One man: running in, then milling about.
@@ -70,6 +78,12 @@ class Man:
 func _ready() -> void:
 	mouse_filter = MOUSE_FILTER_IGNORE
 	set_process(false)
+
+
+## Every man in the crowd glows gold from underneath for a moment.
+func glow() -> void:
+	_glow_age = 0.0
+	set_process(true)
 
 
 ## No one's on his way in.
@@ -126,6 +140,10 @@ func _random_spot() -> Vector2:
 
 
 func _process(delta: float) -> void:
+	if _glow_age >= 0:
+		_glow_age += delta
+		if _glow_age >= GLOW_SECONDS:
+			_glow_age = -1.0
 	var hazards := _hazards()
 	for man in _men.duplicate():
 		if man.arrived and not hazards.is_empty():
@@ -215,6 +233,8 @@ func _draw() -> void:
 	# Further back (higher up) first, so nearer men stand in front.
 	var men := _men.duplicate()
 	men.sort_custom(func(a: Man, b: Man) -> bool: return a.at.y < b.at.y)
+	if _glow_age >= 0:
+		_draw_glow(men)
 	for man: Man in men:
 		if not man.arrived and man.wait > 0:
 			continue
@@ -227,6 +247,24 @@ func _draw() -> void:
 		PixelArt.draw(self, STRIDE[frame], man.at.floor() + Vector2(0, -PX if frame == 0 else 0), PX, COLOR)
 	if count > MAX_SHOWN:
 		_draw_count()
+
+
+## The [method glow] under [param men], under all of them so it never covers anyone. Each light
+## is a few stacked faint circles, brightest at the middle; the pool under the feet is flattened.
+func _draw_glow(men: Array) -> void:
+	# Quick at first, then lingering faintly.
+	var strength := pow(1.0 - _glow_age / GLOW_SECONDS, 2)
+	for man: Man in men:
+		if not man.arrived:
+			continue
+		var body := man.at + MAN_SIZE / 2
+		var feet := man.at + Vector2(MAN_SIZE.x / 2, MAN_SIZE.y)
+		for i in 3:
+			var k := 1.0 - i / 3.0
+			draw_circle(body, GLOW_HALO_RADIUS * k, Color(GLOW_COLOR, 0.12 * strength))
+			draw_set_transform(feet, 0, Vector2(1, 0.45))
+			draw_circle(Vector2.ZERO, GLOW_POOL_RADIUS * k, Color(GLOW_COLOR, 0.3 * strength))
+			draw_set_transform(Vector2.ZERO)
 
 
 ## The army's size in gold digits, centred at the bottom of the rect.
