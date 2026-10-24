@@ -350,6 +350,7 @@ func _build_ui() -> void:
 	for i in 5:
 		var view := CardView.new()
 		view.show_empty_slot = true
+		view.sway = true
 		view.pixel_scale = PortraitLayout.BOARD_CARD_SCALE
 		view.position = _layout.board_origin + Vector2(i * step, 0)
 		add_child(view)

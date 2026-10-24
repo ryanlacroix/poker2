@@ -17,6 +17,13 @@ const FLY_SECONDS := 0.25
 ## rests higher (see [member resting_z]) keeps its own.
 const FLY_Z := SeatView.DARKEN_Z + 2
 
+## A swaying card (see [member sway]) bobs up and down by up to [constant SWAY_BOB] pixels and
+## tilts by up to [constant SWAY_TILT] radians either way, each on its own slow cycle.
+const SWAY_BOB := 1.0
+const SWAY_BOB_SECONDS := 3.6
+const SWAY_TILT := 0.018
+const SWAY_TILT_SECONDS := 5.1
+
 ## A see-through sword over the card's face: a sword card (see [signal PokerTable.battle_started]).
 const SWORD: Array[String] = [
 	"....o....",
@@ -51,6 +58,11 @@ var sword := false:
 	set(value):
 		sword = value
 		queue_redraw()
+## While showing a card, it hovers and sways a little, never quite still.
+var sway := false:
+	set(value):
+		sway = value
+		set_process(value)
 
 var _face_up := false
 var _highlight := Highlight.NONE
@@ -59,12 +71,21 @@ var _fade_tween: Tween
 ## Where the card sits; it's away from here only while flying in.
 var _home: Vector2
 var _flying := false
+## Seconds into the sway; each card starts at a random point so they don't move in step.
+var _sway_time := randf() * 100.0
 
 
 func _ready() -> void:
 	custom_minimum_size = CARD_SIZE * pixel_scale
 	size = CARD_SIZE * pixel_scale
 	mouse_filter = MOUSE_FILTER_IGNORE
+	set_process(sway)
+
+
+func _process(delta: float) -> void:
+	_sway_time += delta
+	if card != null:
+		queue_redraw()
 
 
 ## A new card pops in after [param delay] seconds, hidden until then.
@@ -166,19 +187,20 @@ func set_highlight(highlight: Highlight) -> void:
 
 func _draw() -> void:
 	var rect := Rect2(Vector2.ZERO, CARD_SIZE)
-	var lift := -3.0 * pixel_scale if card != null and _highlight == Highlight.WINNING else 0.0
-	draw_set_transform(Vector2(0, lift), 0, Vector2.ONE * pixel_scale)
 	if card == null:
+		draw_set_transform(Vector2.ZERO, 0, Vector2.ONE * pixel_scale)
 		_draw_empty_slot(rect)
 		return
+	var lift := -3.0 * pixel_scale if _highlight == Highlight.WINNING else 0.0
+	_set_card_transform(lift, pixel_scale)
 
 	# At 2x and up there's room for finer art: draw it on a grid twice as dense.
 	var fine := pixel_scale % 2 == 0
 	if fine:
 		@warning_ignore("integer_division")
-		draw_set_transform(Vector2(0, lift), 0, Vector2.ONE * (pixel_scale / 2))
+		_set_card_transform(lift, pixel_scale / 2)
 		_draw_fine_card(Rect2(Vector2.ZERO, CARD_SIZE * 2))
-		draw_set_transform(Vector2(0, lift), 0, Vector2.ONE * pixel_scale)
+		_set_card_transform(lift, pixel_scale)
 	else:
 		_draw_card(rect)
 	if sword and _face_up:
@@ -192,6 +214,18 @@ func _draw() -> void:
 		draw_rect(rect.grow(1), Color(PixelArt.GOLD, 0.45), false, 1)
 	elif _highlight == Highlight.DIMMED:
 		draw_rect(rect, Color(0.05, 0.05, 0.1, 0.5))
+
+
+## Draws from here on at [param art_scale] screen pixels per art pixel, raised by [param lift],
+## plus the sway's bob and tilt (about the card's centre) if it's swaying.
+func _set_card_transform(lift: float, art_scale: float) -> void:
+	var offset := Vector2(0, lift)
+	var tilt := 0.0
+	if sway:
+		offset.y += sin(_sway_time * TAU / SWAY_BOB_SECONDS) * SWAY_BOB
+		tilt = sin(_sway_time * TAU / SWAY_TILT_SECONDS) * SWAY_TILT
+	var center := size / 2
+	draw_set_transform(offset + center - center.rotated(tilt), tilt, Vector2.ONE * art_scale)
 
 
 func _draw_empty_slot(rect: Rect2) -> void:
