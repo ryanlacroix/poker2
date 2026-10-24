@@ -90,12 +90,17 @@ func target_growth() -> float:
 
 ## Centre of the pot of gold as it's drawn now, in local coordinates.
 func icon_center() -> Vector2:
-	var font := get_theme_default_font()
+	var font := _font()
 	var text_size := roundi(font_size * lerpf(1.0, MAX_GROWTH_SCALE, growth))
 	var text_width := font.get_string_size("$%d" % amount, HORIZONTAL_ALIGNMENT_LEFT, -1, text_size).x
 	var icon := Vector2(PixelArt.POT_OF_GOLD[0].length(), PixelArt.POT_OF_GOLD.size()) * ICON_SCALE
 	var left := floorf((size.x - (icon.x + GAP + text_width)) / 2)
 	return Vector2(left + icon.x / 2, size.y / 2)
+
+
+## Godot's built-in font rather than the UI's pixel font.
+static func _font() -> Font:
+	return ThemeDB.fallback_font
 
 
 ## The amount's colour at [param k] growth: gold for the lower band, then quickly through orange to red.
@@ -119,7 +124,7 @@ func _draw() -> void:
 ## The pot of gold and [param pot_amount], at [param k] growth and [param base_size] before
 ## growing, tinted by [param tint] (for fading).
 func _draw_pot(pot_amount: int, k: float, base_size: int, tint: Color) -> void:
-	var font := get_theme_default_font()
+	var font := _font()
 	var text := "$%d" % pot_amount
 	var text_size := roundi(base_size * lerpf(1.0, MAX_GROWTH_SCALE, k))
 	var text_width := font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, text_size).x

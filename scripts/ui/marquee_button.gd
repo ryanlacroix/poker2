@@ -67,6 +67,13 @@ func _ready() -> void:
 	add_child(_icon, false, INTERNAL_MODE_FRONT)
 
 
+## A drop shadow behind the text, [param offset] down and right of it.
+func set_text_shadow(color: Color, offset: Vector2i) -> void:
+	_label.add_theme_color_override("font_shadow_color", color)
+	_label.add_theme_constant_override("shadow_offset_x", offset.x)
+	_label.add_theme_constant_override("shadow_offset_y", offset.y)
+
+
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_THEME_CHANGED:
 		_copy_font()

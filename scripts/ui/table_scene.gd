@@ -8,6 +8,10 @@ const CHIP_CHANGE_FADE := 0.4
 const CHIP_CHANGE_RISE := 10.0
 const CHIP_CHANGE_FONT_SIZE := UiTheme.FONT_SIZE + 4
 const POT_FONT_SIZE := UiTheme.FONT_SIZE + 4
+## Text on the FOLD / CALL / RAISE buttons, in the built-in font, a little bigger than the rest of the UI.
+const ACTION_FONT_SIZE := UiTheme.FONT_SIZE + 1
+## ...with a black drop shadow this far down and right.
+const ACTION_SHADOW_OFFSET := Vector2i(2, 2)
 const POT_POP_SIZE := POT_FONT_SIZE + 6
 const POT_BOX_SIZE := Vector2(280, 60)
 ## Status text for a player under cordyceps.
@@ -539,6 +543,8 @@ func _build_action_bar() -> void:
 
 	# The raise amount on the left, its slider on the right.
 	_raise_label = Label.new()
+	# The built-in font, like the action buttons.
+	_raise_label.add_theme_font_override("font", ThemeDB.fallback_font)
 	_raise_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
 	_raise_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	UiTheme.add_at(_action_bar, _raise_label, Vector2(pad, y), Vector2(74, slider_h))
@@ -555,6 +561,9 @@ func _build_action_bar() -> void:
 func _action_button(text: String, y: float, on_pressed: Callable) -> MarqueeButton:
 	var pad := PortraitLayout.ACTION_PADDING
 	var button := _new_button(text)
+	button.add_theme_font_override("font", ThemeDB.fallback_font)
+	button.add_theme_font_size_override("font_size", ACTION_FONT_SIZE)
+	button.set_text_shadow(Color.BLACK, ACTION_SHADOW_OFFSET)
 	UiTheme.add_at(_action_bar, button,
 		Vector2(pad, y), Vector2(_layout.action_bar.size.x - pad * 2, PortraitLayout.ACTION_BUTTON_HEIGHT))
 	button.pressed.connect(on_pressed)
@@ -1630,10 +1639,13 @@ func _show_game_over(winner: PokerPlayer) -> void:
 
 
 ## Shows [param box] in a panel in the middle of the screen, over the dimmed table, taking all
-## input. Returns the modal, to free when done.
+## input, with all its text in the built-in font. Returns the modal, to free when done.
 func _show_modal(box: VBoxContainer) -> Control:
 	var modal := Control.new()
 	modal.z_index = DebugMenu.MODAL_Z
+	# All its text in Godot's built-in font rather than the UI's pixel font.
+	modal.theme = Theme.new()
+	modal.theme.default_font = ThemeDB.fallback_font
 	UiTheme.add_at(self, modal, Vector2.ZERO, get_viewport_rect().size)
 	var dim := ColorRect.new()
 	dim.color = Color(0, 0, 0, 0.6)

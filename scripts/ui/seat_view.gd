@@ -41,6 +41,12 @@ const SMOKE_SHADE := Color("7c7884")
 const EMBER_COLOR := Color("6a1414")
 ## How long the gold your-turn outline takes to fade in or out.
 const ACTIVE_FADE_SECONDS := 0.1
+## When the player's chips go down, their chips text flashes this red and fades back to gold this fast.
+## A touch lighter than the hearts' red, since thin text reads darker than a solid heart.
+const CHIPS_LOST_COLOR := Color("ff5a68")
+const CHIPS_LOST_FADE_SECONDS := 0.3
+## ...and pops up to this size, shrinking back as the colour returns.
+const CHIPS_LOST_SCALE := 1.3
 ## Tint for the text and hearts of a seat whose player is OUT or RIP.
 const KNOCKED_OUT_TINT := Color(0.55, 0.55, 0.6)
 
@@ -82,6 +88,9 @@ var _is_active := false
 var _active_alpha := 0.0
 var _battling := false
 var _active_tween: Tween
+## The chips last shown (-1 before the first refresh), to catch them going down.
+var _shown_chips := -1
+var _chips_lost_tween: Tween
 var _reveal := false
 var _is_winner := false
 var _is_target := false
@@ -219,6 +228,9 @@ func deal_cards(delays: Array[float], from: Vector2) -> void:
 func refresh() -> void:
 	# RIP once shot out of hearts (straight away, not just from the next hand); OUT if they went broke.
 	_chips_label.text = "RIP" if player.hearts == 0 else "OUT" if player.is_out else "$%d" % player.chips
+	if player.chips < _shown_chips:
+		_flash_chips_lost()
+	_shown_chips = player.chips
 	var text_tint := KNOCKED_OUT_TINT if _knocked_out() else Color.WHITE
 	for label: Label in [_name_label, _chips_label, _status_label]:
 		label.modulate = text_tint
@@ -229,6 +241,27 @@ func refresh() -> void:
 		_cards[i].modulate = Color(1, 1, 1, 0.35) if player.folded else Color.WHITE
 	_update_processing()
 	queue_redraw()
+
+
+## The chips text turns red and pops bigger, then quickly fades back to gold and shrinks back.
+func _flash_chips_lost() -> void:
+	if _chips_lost_tween:
+		_chips_lost_tween.kill()
+	# Pops out from the middle of the text (the label spans the seat; the text sits at one end).
+	var font := _chips_label.get_theme_font("font")
+	var text_width := font.get_string_size(_chips_label.text, HORIZONTAL_ALIGNMENT_LEFT, -1,
+		_chips_label.get_theme_font_size("font_size")).x
+	var middle_x := text_width / 2
+	match _chips_label.horizontal_alignment:
+		HORIZONTAL_ALIGNMENT_RIGHT: middle_x = _chips_label.size.x - text_width / 2
+		HORIZONTAL_ALIGNMENT_CENTER: middle_x = _chips_label.size.x / 2
+	_chips_label.pivot_offset = Vector2(middle_x, _chips_label.size.y / 2)
+	_chips_lost_tween = create_tween().set_parallel()
+	_chips_lost_tween.tween_method(func(color: Color) -> void:
+		_chips_label.add_theme_color_override("font_color", color),
+		CHIPS_LOST_COLOR, PixelArt.GOLD, CHIPS_LOST_FADE_SECONDS)
+	_chips_lost_tween.tween_property(_chips_label, "scale", Vector2.ONE, CHIPS_LOST_FADE_SECONDS) \
+		.from(Vector2.ONE * CHIPS_LOST_SCALE)
 
 
 ## Shot out of hearts or gone broke: the seat shows RIP or OUT.
