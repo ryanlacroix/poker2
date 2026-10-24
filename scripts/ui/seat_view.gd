@@ -175,10 +175,10 @@ func _ready() -> void:
 		var view := CardView.new()
 		view.pixel_scale = card_scale
 		view.position = cards_origin + Vector2(i * (CardView.CARD_SIZE.x * card_scale + 2), 0)
+		view.sway = true
 		if player.is_human():
 			view.resting_z = HUMAN_CARDS_Z
 			view.z_index = HUMAN_CARDS_Z
-			view.sway = true
 		add_child(view)
 		_cards.append(view)
 	var labels_y := 52.0 if _is_compact() else _wide_labels_y()
