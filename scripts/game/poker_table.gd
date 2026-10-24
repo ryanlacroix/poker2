@@ -81,10 +81,16 @@ signal item_phase_finished
 ## Emitted between hands when [member wait_for_next_hand] is on; call [method continue_to_next_hand].
 signal waiting_for_next_hand
 signal game_over(leader: PokerPlayer)
+## As each hand after the first starts, before the blinds and the deal, everyone still in was paid [constant TAX_PER_ARMY] for
+## each of their armies: [param paid] maps each player paid to how much. Not emitted when no one has
+## any armies.
+signal taxes_collected(paid: Dictionary)
 signal message(text: String)
 ## Never emitted: a coroutine that awaits it is parked until the table is freed.
 signal _never
 
+## Chips paid out per army in taxes before each hand (see [signal taxes_collected]).
+const TAX_PER_ARMY := 10
 ## Armies a hand of each [enum HandEvaluator.Category] raises: none for a high card, one for a
 ## pair or two pair, then one more for each category up (two for three of a kind, three for a
 ## straight, ... seven for a straight flush).
@@ -98,6 +104,8 @@ var hole_card_stagger := 0.0
 var npc_think_time := 0.8
 var showdown_delay := 2.0
 var between_hands_delay := 1.5
+## Pause after taxes are paid, before the blinds, so each payout's "+$" shows on its own.
+var tax_delay := 0.8
 ## Pause after a gunshot, a stimpak or a hex in the item phase, so it can be seen before the next turn.
 var shot_delay := 0.9
 ## Pause between a shot at a shimmering player and the shots it spreads to.
@@ -454,6 +462,21 @@ func start_game() -> void:
 	game_over.emit(leader)
 
 
+## Everyone still in gets [constant TAX_PER_ARMY] for each of their armies. Returns whether
+## anyone was paid.
+func _collect_taxes() -> bool:
+	var paid := {}
+	for p in players:
+		if in_game(p) and not p.blown_up and p.armies > 0:
+			paid[p] = p.armies * TAX_PER_ARMY
+			p.chips += paid[p]
+	if paid.is_empty():
+		return false
+	chips_changed.emit()
+	taxes_collected.emit(paid)
+	return true
+
+
 # --- Hand flow ---------------------------------------------------------
 
 func _play_hand() -> void:
@@ -475,6 +498,9 @@ func _play_hand() -> void:
 	var bb_index := _next_seat(sb_index, seated)
 
 	hand_started.emit(hand_number, dealer_index)
+	# After the view has cleared the last hand away, so its notice isn't swept up with it.
+	if hand_number > 1 and _collect_taxes():
+		await _wait(tax_delay)
 	_start_street(Poker.Street.PREFLOP)
 	_post_blind(players[sb_index], small_blind, "small")
 	_post_blind(players[bb_index], big_blind, "big")

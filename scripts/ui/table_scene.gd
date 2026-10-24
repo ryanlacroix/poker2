@@ -707,6 +707,7 @@ func _connect_table() -> void:
 		for p: PokerPlayer in raised:
 			_armies[p.seat].march_in(raised[p], CoinShower.SECONDS))
 	_table.battle_started.connect(_on_battle_started)
+	_table.taxes_collected.connect(func(_paid: Dictionary) -> void: _notices.enqueue("Taxes collected"))
 	_table.item_gained.connect(func(player: PokerPlayer, item: Item.Kind) -> void:
 		_seats[player.seat].refresh()
 		_item_news.append(Item.gained_text(item, player.display_name)))
@@ -1591,10 +1592,13 @@ func _pop_pot_label() -> void:
 
 
 ## End of the game: a modal over the table. Winning it shows the next table's splash and blurb
-## and offers that table; going bust offers this table again.
+## and offers that table; going bust offers this table again, once the winning-hand banner's
+## faded out.
 func _show_game_over(winner: PokerPlayer) -> void:
 	if _actions_open:
 		_set_actions_open(false)
+	if not winner.is_human() and _win_banner.visible:
+		await _win_banner.finished
 	var box := VBoxContainer.new()
 	var title := Label.new()
 	title.text = "TABLE CLEARED" if winner.is_human() else "BUSTED!"

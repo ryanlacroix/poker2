@@ -112,6 +112,7 @@ func _play_hands(hands: int, item_chance: float, players: Array[PokerPlayer], do
 	table.npc_think_time = 0
 	table.showdown_delay = 0
 	table.between_hands_delay = 0
+	table.tax_delay = 0
 	table.shot_delay = 0
 	table.leech_delay = 0
 	table.lightning_delay = 0
@@ -728,6 +729,7 @@ func _run_simulation() -> void:
 	table.npc_think_time = 0
 	table.showdown_delay = 0
 	table.between_hands_delay = 0
+	table.tax_delay = 0
 	table.max_hands = 300
 	table.wait_for_next_hand = true
 	table.sword_chance = 0.5
@@ -739,12 +741,18 @@ func _run_simulation() -> void:
 	for i in seated.size():
 		players.append(PokerPlayer.new("%s%d" % [seated[i].display_name, i], 1000, seated[i]))
 	table.setup(players)
-	var expected := _total_chips(table)
+	# Lambdas capture locals by value, so the expected total lives in here.
+	var expected := {"chips": _total_chips(table)}
 	var armies_before := {}
+	# Taxes are the only chips added to the table: check each player's cut, then count them in.
+	table.taxes_collected.connect(func(paid: Dictionary) -> void:
+		for p: PokerPlayer in paid:
+			_check(paid[p] == p.armies * PokerTable.TAX_PER_ARMY and p.armies > 0, "%s taxed for their armies" % p.display_name)
+			expected.chips += paid[p])
 
 	table.hand_finished.connect(func() -> void:
 		var total := _total_chips(table)
-		_check(total == expected, "chips conserved after hand %d (%d != %d)" % [table.hand_number, total, expected])
+		_check(total == expected.chips, "chips conserved after hand %d (%d != %d)" % [table.hand_number, total, expected.chips])
 		_check(table.players.all(func(p: PokerPlayer) -> bool: return p.chips >= 0), "no negative stacks")
 		for p in table.players:
 			var expected_armies: int = armies_before.get(p, 0)
@@ -755,7 +763,7 @@ func _run_simulation() -> void:
 			_check(p.armies == expected_armies, "%s raised the right armies in hand %d" % [p.display_name, table.hand_number])
 			armies_before[p] = p.armies)
 	# Lambdas capture locals by value, so the counters live in here.
-	var counts := {"shots": 0, "stimpaks": 0, "hexes": 0, "pauses": 0, "battles": 0}
+	var counts := {"shots": 0, "stimpaks": 0, "hexes": 0, "pauses": 0, "battles": 0, "taxes": 0}
 	# Stand in for the view: start item turns straight away, and count the shots fired.
 	table.waiting_for_item_phase.connect(table.begin_item_phase)
 	table.shot.connect(func(_s: PokerPlayer, _t: PokerPlayer, _result: Item.ShotResult) -> void:
@@ -781,6 +789,8 @@ func _run_simulation() -> void:
 		armies_before[a] = a.armies
 		armies_before[b] = b.armies
 		table.end_battle())
+	table.taxes_collected.connect(func(_paid: Dictionary) -> void:
+		counts.taxes += 1)
 	# Stand in for the "next hand" button.
 	table.waiting_for_next_hand.connect(func() -> void:
 		counts.pauses += 1
@@ -788,7 +798,8 @@ func _run_simulation() -> void:
 	table.game_over.connect(func(winner: PokerPlayer) -> void:
 		# Every hand but the game-ending one should pause for the button.
 		_check(counts.pauses == table.hand_number - 1, "paused %d times over %d hands" % [counts.pauses, table.hand_number])
-		print("Simulated %d hands (%d gunshots, %d stimpaks, %d hexes, %d battles), leader %s with %d" % [table.hand_number, counts.shots, counts.stimpaks, counts.hexes, counts.battles, winner.display_name, winner.chips])
+		_check(counts.taxes > 0, "taxes were collected")
+		print("Simulated %d hands (%d gunshots, %d stimpaks, %d hexes, %d battles, %d tax days), leader %s with %d" % [table.hand_number, counts.shots, counts.stimpaks, counts.hexes, counts.battles, counts.taxes, winner.display_name, winner.chips])
 		print("ALL TESTS PASSED" if _failures == 0 else "%d FAILURE(S)" % _failures)
 		get_tree().quit(_failures))
 	table.start_game()
