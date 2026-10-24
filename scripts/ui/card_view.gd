@@ -23,6 +23,15 @@ const SWAY_BOB := 1.0
 const SWAY_BOB_SECONDS := 3.6
 const SWAY_TILT := 0.018
 const SWAY_TILT_SECONDS := 5.1
+## A swaying card floats just above the table over a soft shadow: [constant SHADOW_LAYERS] faint
+## layers, each [constant SHADOW_SPREAD] wider all round than the last, which stack up to
+## [constant SHADOW_ALPHA] at the middle and fade out at the edges. It's no wider than the card
+## and sits [constant SHADOW_DROP] below it, so it only shows under the bottom edge. Sizes are in
+## art pixels, so they scale with the card.
+const SHADOW_ALPHA := 0.4
+const SHADOW_LAYERS := 5
+const SHADOW_SPREAD := 0.6
+const SHADOW_DROP := 2.0
 
 ## A see-through sword over the card's face: a sword card (see [signal PokerTable.battle_started]).
 const SWORD: Array[String] = [
@@ -58,7 +67,7 @@ var sword := false:
 	set(value):
 		sword = value
 		queue_redraw()
-## While showing a card, it hovers and sways a little, never quite still.
+## While showing a card, it hovers and sways a little, never quite still, over a soft shadow.
 var sway := false:
 	set(value):
 		sway = value
@@ -191,6 +200,8 @@ func _draw() -> void:
 		draw_set_transform(Vector2.ZERO, 0, Vector2.ONE * pixel_scale)
 		_draw_empty_slot(rect)
 		return
+	if sway:
+		_draw_shadow()
 	var lift := -3.0 * pixel_scale if _highlight == Highlight.WINNING else 0.0
 	_set_card_transform(lift, pixel_scale)
 
@@ -214,6 +225,22 @@ func _draw() -> void:
 		draw_rect(rect.grow(1), Color(PixelArt.GOLD, 0.45), false, 1)
 	elif _highlight == Highlight.DIMMED:
 		draw_rect(rect, Color(0.05, 0.05, 0.1, 0.5))
+
+
+## A soft shadow on the table under the card. It bobs and sways along with the card, but stays
+## down when a winning card lifts.
+func _draw_shadow() -> void:
+	_set_card_transform(0, 1)
+	# Narrowed so even the widest layer stays within the card's width.
+	var widest := (SHADOW_LAYERS - 1) * SHADOW_SPREAD * pixel_scale
+	var base := Rect2(Vector2(widest, SHADOW_DROP * pixel_scale), size - Vector2(widest * 2, 0))
+	var box := StyleBoxFlat.new()
+	box.anti_aliasing = true
+	box.bg_color = Color(0, 0, 0, SHADOW_ALPHA / SHADOW_LAYERS)
+	for i in SHADOW_LAYERS:
+		var spread := (SHADOW_LAYERS - 1 - i) * SHADOW_SPREAD * pixel_scale
+		box.set_corner_radius_all(roundi(pixel_scale + spread))
+		draw_style_box(box, base.grow(spread))
 
 
 ## Draws from here on at [param art_scale] screen pixels per art pixel, raised by [param lift],
