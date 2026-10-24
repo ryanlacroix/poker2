@@ -95,6 +95,15 @@ func _standing_center(side: int) -> Vector2:
 	return sum / maxi(men.size(), 1)
 
 
+## Where every man still standing is: top-left corners in the parent's coordinates.
+func standing_points() -> Array[Vector2]:
+	var points: Array[Vector2] = []
+	for fighter in _fighters:
+		if fighter.fell_at < 0:
+			points.append(position + fighter.at)
+	return points
+
+
 func _standing(side: int) -> Array[Fighter]:
 	var men: Array[Fighter] = []
 	men.assign(_fighters.filter(func(f: Fighter) -> bool: return f.side == side and f.fell_at < 0))

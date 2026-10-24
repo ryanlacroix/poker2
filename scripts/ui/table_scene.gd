@@ -32,6 +32,11 @@ const INTRO_FADE_IN_SECONDS := 0.15
 const INTRO_TITLE_SECONDS := 1.5
 const INTRO_FADE_SECONDS := 0.4
 const INTRO_AFTER_DELAY := 0.5
+## Before a battle, "A vs B" shows this long, then fades out.
+const VERSUS_SECONDS := 1.5
+const VERSUS_FADE_SECONDS := 0.4
+## Dark red, so it stands out against the white cards on the table.
+const VERSUS_COLOR := Color("a81c24")
 ## The title is drawn this small, then scaled up by [constant INTRO_PIXEL_SCALE] into chunky pixels.
 const INTRO_FONT_SIZE := 16
 const INTRO_PIXEL_SCALE := 3
@@ -464,21 +469,8 @@ func _on_debug_spot_input(event: InputEvent) -> void:
 ## Before the first deal: a pause, then a big "Table N" title that fades in and away, then a short pause
 ## and the game starts. Run by a tween on this scene, so it stops if the scene is left.
 func _play_intro() -> void:
-	var title := Label.new()
-	title.text = "Table %d" % _level.number
-	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	title.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	title.add_theme_font_size_override("font_size", INTRO_FONT_SIZE)
-	title.add_theme_color_override("font_color", Color.WHITE)
-	title.add_theme_color_override("font_shadow_color", Color.BLACK)
-	title.add_theme_constant_override("shadow_offset_x", 1)
-	title.add_theme_constant_override("shadow_offset_y", 1)
-	title.mouse_filter = MOUSE_FILTER_IGNORE
-	title.z_index = BANNER_Z
+	var title := _add_big_title("Table %d" % _level.number)
 	title.modulate.a = 0
-	# Covers the screen once scaled up, so the title sits in its centre.
-	UiTheme.add_at(self, title, Vector2.ZERO, get_viewport_rect().size / INTRO_PIXEL_SCALE)
-	title.scale = Vector2.ONE * INTRO_PIXEL_SCALE
 
 	var tween := create_tween()
 	tween.tween_interval(INTRO_DELAY)
@@ -488,6 +480,29 @@ func _play_intro() -> void:
 	tween.tween_callback(title.queue_free)
 	tween.tween_interval(INTRO_AFTER_DELAY)
 	tween.tween_callback(_table.start_game)
+
+
+## Big chunky-pixel text in the middle of the screen, over the table; click-through.
+func _add_big_title(text: String, color := Color.WHITE) -> Label:
+	var title := Label.new()
+	title.text = text
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	title.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	title.add_theme_font_size_override("font_size", INTRO_FONT_SIZE)
+	title.add_theme_color_override("font_color", color)
+	title.add_theme_color_override("font_shadow_color", Color.BLACK)
+	title.add_theme_constant_override("shadow_offset_x", 1)
+	title.add_theme_constant_override("shadow_offset_y", 1)
+	title.mouse_filter = MOUSE_FILTER_IGNORE
+	title.z_index = BANNER_Z
+	title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	# Covers the screen once scaled up, so the title sits in its centre. Sized before it's added,
+	# or the wrapping measures it at zero width and it comes out far too tall.
+	var area := get_viewport_rect().size / INTRO_PIXEL_SCALE
+	title.size = area
+	UiTheme.add_at(self, title, Vector2.ZERO, area)
+	title.scale = Vector2.ONE * INTRO_PIXEL_SCALE
+	return title
 
 
 func _add_header_text(row: HBoxContainer, text: String, color: Color) -> Label:
@@ -1217,8 +1232,10 @@ func _on_item_stolen(caster: PokerPlayer, target: PokerPlayer, item: HeldItem) -
 
 
 ## A sword card won the hand. Once the winning-hand banner's done and every army's men are home,
-## the two fighting players' seats are outlined red while their armies fight it out (see
-## [BattleView]); the survivors run home, then a modal names the winner, and OK carries on.
+## the two fighting players' seats are outlined red and "A vs B" shows over the table, then fades;
+## once it's gone their armies draw swords and fight it out (see [BattleView]); the survivors run
+## home, then a modal names the winner, and OK carries on. Everyone else's army keeps out of the
+## way of the fighting and the survivors running home.
 func _on_battle_started(a: PokerPlayer, b: PokerPlayer, a_armies: int, b_armies: int, rounds: Array) -> void:
 	if _win_banner.visible:
 		await _win_banner.finished
@@ -1228,17 +1245,34 @@ func _on_battle_started(a: PokerPlayer, b: PokerPlayer, a_armies: int, b_armies:
 	var fighters: Array[PokerPlayer] = [a, b]
 	for p in fighters:
 		_seats[p.seat].set_battling(true)
+	var title := _add_big_title("%s\nvs\n%s" % [a.display_name, b.display_name], VERSUS_COLOR)
+	var tween := create_tween()
+	tween.tween_interval(VERSUS_SECONDS)
+	tween.tween_property(title, "modulate:a", 0.0, VERSUS_FADE_SECONDS)
+	tween.tween_callback(title.queue_free)
+	await tween.finished
 	var battle := BattleView.new()
 	battle.sides = [_armies[a.seat].disband(a_armies), _armies[b.seat].disband(b_armies)]
 	battle.rounds = rounds
 	UiTheme.add_at(self, battle, Vector2.ZERO, get_viewport_rect().size)
+	var bystanders := _armies.filter(func(army: ArmyView) -> bool:
+		return army != _armies[a.seat] and army != _armies[b.seat])
+	for army: ArmyView in bystanders:
+		army.avoid = battle.standing_points
 	var result: Array = await battle.finished
 	var winner := fighters[result[0]]
 	var survivors: Array[Vector2] = result[1]
 	var home := _armies[winner.seat]
+	for army: ArmyView in bystanders:
+		army.avoid = home.running_points
+	# Running home over the cards and seats, as they fought, rather than ducking under them.
+	home.z_index = SeatView.DARKEN_Z
 	home.rejoin(survivors)
 	if not home.is_settled():
 		await home.settled
+	home.z_index = 0
+	for army: ArmyView in bystanders:
+		army.avoid = Callable()
 	for p in fighters:
 		_seats[p.seat].set_battling(false)
 	_show_battle_result(winner, fighters[1 - result[0]], survivors.size())

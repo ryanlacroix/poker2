@@ -5,6 +5,7 @@ extends Control
 ## after another; once there, each one dawdles, then ambles to some spot nearby, and so on. Past
 ## [constant MAX_SHOWN], newcomers melt into the crowd and the army's size shows in digits.
 ## For a battle, the men are handed over ([method disband]) and survivors come back ([method rejoin]).
+## Meanwhile other armies keep out of the way of the men on the move (see [member avoid]).
 
 ## Every man on his way in has arrived.
 signal settled
@@ -37,11 +38,21 @@ const WALK_FRAME_SECONDS := 0.3
 const STROLL_DISTANCE := 16.0
 const REST_MIN := 1.0
 const REST_MAX := 4.0
+## Getting out of the way (see [member avoid]): men step aside when someone comes within
+## [constant DODGE_RADIUS] (centre to centre), trotting at [constant DODGE_SPEED] to the best of
+## [constant DODGE_CHOICES] spots up to [constant DODGE_DISTANCE] away, still inside the rect.
+const DODGE_RADIUS := 14.0
+const DODGE_SPEED := 60.0
+const DODGE_DISTANCE := 16.0
+const DODGE_CHOICES := 8
 
 ## Where new men come from (local coordinates): off-screen, on the side they run in from.
 var enter_from: Vector2
 ## Men who've arrived (counting any melted into the crowd).
 var count := 0
+## Men from elsewhere to keep out of the way of: returns their top-left corners in the parent's
+## coordinates. Left empty (the default), no one dodges.
+var avoid := Callable()
 
 var _men: Array[Man] = []
 
@@ -53,6 +64,7 @@ class Man:
 	var arrived := false
 	var wait := 0.0 # seconds before he sets off, or rests, before moving on
 	var stride_age := 0.0 # seconds spent moving, for the stride frames
+	var dodging := false # trotting out of someone's way
 
 
 func _ready() -> void:
@@ -114,16 +126,20 @@ func _random_spot() -> Vector2:
 
 
 func _process(delta: float) -> void:
+	var hazards := _hazards()
 	for man in _men.duplicate():
+		if man.arrived and not hazards.is_empty():
+			_dodge(man, hazards)
 		if man.wait > 0:
 			man.wait -= delta
 			continue
-		var speed := WALK_SPEED if man.arrived else RUN_SPEED
+		var speed := DODGE_SPEED if man.dodging else WALK_SPEED if man.arrived else RUN_SPEED
 		man.at = man.at.move_toward(man.target, speed * delta)
 		man.stride_age += delta
 		if man.at != man.target:
 			continue
 		man.stride_age = 0
+		man.dodging = false
 		man.wait = randf_range(REST_MIN, REST_MAX)
 		man.target = _stroll_from(man.at)
 		if not man.arrived:
@@ -137,10 +153,57 @@ func _process(delta: float) -> void:
 	queue_redraw()
 
 
+## The centres of the men in [member avoid], in local coordinates.
+func _hazards() -> Array[Vector2]:
+	var centers: Array[Vector2] = []
+	if avoid.is_valid():
+		for point: Vector2 in avoid.call():
+			centers.append(point - position + MAN_SIZE / 2)
+	return centers
+
+
+## If someone's close to [param man], or to where he's heading, he trots off to whichever nearby
+## spot is furthest from everyone in [param hazards].
+func _dodge(man: Man, hazards: Array[Vector2]) -> void:
+	if _clearance(man.at, hazards) >= DODGE_RADIUS and _clearance(man.target, hazards) >= DODGE_RADIUS:
+		return
+	if man.dodging and _clearance(man.target, hazards) >= DODGE_RADIUS:
+		return
+	var best := man.at
+	var best_clearance := _clearance(man.at, hazards)
+	var bounds := (size - MAN_SIZE).max(Vector2.ZERO)
+	for i in DODGE_CHOICES:
+		var spot := (man.at + Vector2.from_angle(TAU * (i + randf()) / DODGE_CHOICES) * DODGE_DISTANCE).clamp(Vector2.ZERO, bounds)
+		var clearance := _clearance(spot, hazards)
+		if clearance > best_clearance:
+			best = spot
+			best_clearance = clearance
+	man.target = best
+	man.dodging = true
+	man.wait = 0
+
+
+## How far a man at [param at] (top-left) would stand from the nearest of [param hazards].
+func _clearance(at: Vector2, hazards: Array[Vector2]) -> float:
+	var nearest := INF
+	for hazard in hazards:
+		nearest = minf(nearest, (at + MAN_SIZE / 2).distance_to(hazard))
+	return nearest
+
+
 ## Somewhere a short stroll from [param from], inside the rect.
 func _stroll_from(from: Vector2) -> Vector2:
 	var to := from + Vector2.from_angle(randf() * TAU) * randf_range(STROLL_DISTANCE / 3, STROLL_DISTANCE)
 	return to.clamp(Vector2.ZERO, (size - MAN_SIZE).max(Vector2.ZERO))
+
+
+## Where the men still running in or home are: top-left corners in the parent's coordinates.
+func running_points() -> Array[Vector2]:
+	var points: Array[Vector2] = []
+	for man in _men:
+		if not man.arrived and man.wait <= 0:
+			points.append(position + man.at)
+	return points
 
 
 ## Men in the crowd, not counting those still running in.
@@ -159,7 +222,7 @@ func _draw() -> void:
 		if not moving:
 			PixelArt.draw(self, STAND, man.at.floor(), PX, COLOR)
 			continue
-		var frame_seconds := WALK_FRAME_SECONDS if man.arrived else RUN_FRAME_SECONDS
+		var frame_seconds := WALK_FRAME_SECONDS if man.arrived and not man.dodging else RUN_FRAME_SECONDS
 		var frame := int(man.stride_age / frame_seconds) % STRIDE.size()
 		PixelArt.draw(self, STRIDE[frame], man.at.floor() + Vector2(0, -PX if frame == 0 else 0), PX, COLOR)
 	if count > MAX_SHOWN:
