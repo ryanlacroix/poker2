@@ -58,14 +58,24 @@ func _ready() -> void:
 	add_child(_clip, false, INTERNAL_MODE_FRONT)
 	_label.mouse_filter = MOUSE_FILTER_IGNORE
 	_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	_label.add_theme_font_override("font", get_theme_font("font"))
-	_label.add_theme_font_size_override("font_size", get_theme_font_size("font_size"))
+	_copy_font()
 	_clip.add_child(_label)
 	_icon.mouse_filter = MOUSE_FILTER_IGNORE
 	_icon.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	_icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	_icon.visible = side_icon != null
 	add_child(_icon, false, INTERNAL_MODE_FRONT)
+
+
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_THEME_CHANGED:
+		_copy_font()
+
+
+## The label wears the button's font, kept up to date if the theme's font changes.
+func _copy_font() -> void:
+	_label.add_theme_font_override("font", get_theme_font("font"))
+	_label.add_theme_font_size_override("font_size", get_theme_font_size("font_size"))
 
 
 func _process(delta: float) -> void:

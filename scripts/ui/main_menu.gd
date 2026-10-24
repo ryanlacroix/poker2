@@ -39,6 +39,8 @@ func _ready() -> void:
 	var title := Label.new()
 	title.text = "poker2"
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	# Godot's built-in font rather than the UI's pixel font.
+	title.add_theme_font_override("font", ThemeDB.fallback_font)
 	title.add_theme_font_size_override("font_size", 64)
 	title.add_theme_color_override("font_color", PixelArt.GOLD)
 	title.add_theme_color_override("font_outline_color", Color.BLACK)

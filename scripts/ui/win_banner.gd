@@ -50,7 +50,8 @@ func hide_banner() -> void:
 
 
 func _draw() -> void:
-	var font := get_theme_default_font()
+	# Godot's built-in font rather than the UI's pixel font.
+	var font := ThemeDB.fallback_font
 	var font_size := UiTheme.FONT_SIZE
 
 	# Largest whole-number scale that keeps the title on screen; the name goes one step smaller.

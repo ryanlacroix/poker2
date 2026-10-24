@@ -482,10 +482,12 @@ func _play_intro() -> void:
 	tween.tween_callback(_table.start_game)
 
 
-## Big chunky-pixel text in the middle of the screen, over the table; click-through.
+## Big chunky-pixel text in the middle of the screen, over the table, in Godot's built-in font
+## rather than the UI's pixel font; click-through.
 func _add_big_title(text: String, color := Color.WHITE) -> Label:
 	var title := Label.new()
 	title.text = text
+	title.add_theme_font_override("font", ThemeDB.fallback_font)
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	title.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	title.add_theme_font_size_override("font_size", INTRO_FONT_SIZE)
